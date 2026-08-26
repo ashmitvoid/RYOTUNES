@@ -5367,3 +5367,205 @@ html[data-ryo-theme="light"] .ryo-settings-aside {
   margin-top:6px !important;
   padding:7px 0 7px !important;
 }
+
+/* v2.2.1 — richer light theme.
+   Keep the restrained Ryoku instrument, but give each plane its own muted colour family so light
+   mode reads as designed rather than as one beige sheet. These are static fills/gradients only:
+   no new animation or compositor-heavy effects. */
+html[data-ryo-theme="light"] {
+  --ryo-paper:#d2cabd;
+  --ryo-paper-lift:#e2d8c9;
+  --ryo-panel:#c4baab;
+  --ryo-card:#dbd1c3;
+  --ryo-sidebar-surface:#bec6b8;
+  --ryo-player-surface:#c1c7cc;
+
+  --ryo-ink:#28231e;
+  --ryo-ink-dim:#494038;
+  --ryo-ink-muted:#685f55;
+  --ryo-ink-faint:#82776b;
+  --ryo-bone:#3d3731;
+  --ryo-ink-on-bone:#f3ece2;
+
+  --ryo-light-sage:#9faa94;
+  --ryo-light-sage-strong:#556454;
+  --ryo-light-blue:#9aaabc;
+  --ryo-light-blue-strong:#516273;
+  --ryo-light-clay:#c58f73;
+  --ryo-light-clay-strong:#985b45;
+  --ryo-light-gold:#c0a467;
+  --ryo-light-rose:#b98c92;
+
+  --ryo-line:color-mix(in srgb,var(--ryo-ink) 18%,transparent);
+  --ryo-line-soft:color-mix(in srgb,var(--ryo-ink) 9%,transparent);
+  --ryo-line-strong:color-mix(in srgb,var(--ryo-ink) 32%,transparent);
+}
+
+/* Shell planes: sage navigation, blue-grey transport, warm parchment content. */
+html[data-ryo-theme="light"] .ryo-sidebar,
+html[data-ryo-theme="light"] [data-sidebar="sidebar"],
+html[data-ryo-theme="light"] .ryo-settings-rail {
+  background:linear-gradient(
+    180deg,
+    color-mix(in srgb,var(--ryo-light-sage) 40%,var(--ryo-sidebar-surface)) 0%,
+    var(--ryo-sidebar-surface) 44%,
+    color-mix(in srgb,var(--ryo-light-blue) 12%,var(--ryo-sidebar-surface)) 100%
+  ) !important;
+}
+html[data-ryo-theme="light"] .ryo-titlebar {
+  background:color-mix(in srgb,var(--ryo-light-blue) 24%,var(--ryo-player-surface)) !important;
+  border-color:color-mix(in srgb,var(--ryo-light-blue-strong) 22%,var(--ryo-line)) !important;
+}
+html[data-ryo-theme="light"] .ryo-playerbar,
+html[data-ryo-theme="light"] .ryo-player-bar {
+  background:linear-gradient(
+    90deg,
+    color-mix(in srgb,var(--ryo-light-blue) 22%,var(--ryo-player-surface)),
+    var(--ryo-player-surface) 54%,
+    color-mix(in srgb,var(--ryo-light-sage) 16%,var(--ryo-player-surface))
+  ) !important;
+  border-top-color:color-mix(in srgb,var(--ryo-light-blue-strong) 26%,var(--ryo-line)) !important;
+}
+
+/* Home hero: a quiet clay → parchment → sage field instead of a single flat white-ish plane. */
+html[data-ryo-theme="light"] .ryo-home-header {
+  background:
+    linear-gradient(
+      108deg,
+      color-mix(in srgb,var(--ryo-light-clay) 20%,var(--ryo-paper)) 0%,
+      color-mix(in srgb,var(--ryo-paper-lift) 58%,var(--ryo-paper)) 40%,
+      color-mix(in srgb,var(--ryo-light-sage) 20%,var(--ryo-paper)) 100%
+    ) !important;
+  border-bottom-color:color-mix(in srgb,var(--ryo-light-gold) 34%,var(--ryo-line)) !important;
+}
+html[data-ryo-theme="light"] .ryo-home-eyebrow,
+html[data-ryo-theme="light"] .ryo-home-eyebrow .ryo-jp-mark {
+  color:var(--ryo-light-clay-strong) !important;
+}
+html[data-ryo-theme="light"] .ryo-home-eyebrow .ryo-eyebrow-rule {
+  background:var(--ryo-light-clay-strong) !important;
+}
+
+/* Listening deck gets its own blue/sage instrument plane while artwork still provides the loudest colour. */
+html[data-ryo-theme="light"] .ryo-music-deck {
+  background:linear-gradient(
+    135deg,
+    color-mix(in srgb,var(--ryo-light-blue) 18%,var(--ryo-card)),
+    var(--ryo-card) 52%,
+    color-mix(in srgb,var(--ryo-light-sage) 16%,var(--ryo-card))
+  ) !important;
+  border-color:color-mix(in srgb,var(--ryo-light-blue-strong) 24%,var(--ryo-line)) !important;
+}
+html[data-ryo-theme="light"] .ryo-music-deck-copy {
+  background:color-mix(in srgb,var(--ryo-paper-lift) 58%,transparent);
+}
+html[data-ryo-theme="light"] .ryo-music-deck-running b {
+  color:var(--ryo-light-blue-strong) !important;
+}
+html[data-ryo-theme="light"] .ryo-music-deck-progress i b {
+  background:var(--ryo-light-clay-strong) !important;
+}
+html[data-ryo-theme="light"] .ryo-music-deck-actions .ryo-music-deck-play,
+html[data-ryo-theme="light"] .ryo-music-deck-actions .ryo-music-deck-play:hover,
+html[data-ryo-theme="light"] .ryo-playerbar .ryo-transport-primary,
+html[data-ryo-theme="light"] .ryo-playerbar .ryo-transport-primary:hover,
+html[data-ryo-theme="light"] .ryo-playerbar .ryo-transport-primary:focus-visible,
+html[data-ryo-theme="light"] .ryo-playerbar .ryo-transport-primary:active {
+  background:var(--ryo-light-clay-strong) !important;
+  border-color:var(--ryo-light-clay-strong) !important;
+  color:#fff4e9 !important;
+}
+
+/* Navigation active state is deep sage; hover state keeps the same family at low intensity. */
+html[data-ryo-theme="light"] .ryo-sidebar-nav .bg-primary,
+html[data-ryo-theme="light"] .ryo-sidebar-nav button.bg-primary {
+  background:var(--ryo-light-sage-strong) !important;
+  border-color:var(--ryo-light-sage-strong) !important;
+  color:#f4efe6 !important;
+}
+html[data-ryo-theme="light"] .ryo-sidebar-nav a:hover,
+html[data-ryo-theme="light"] .ryo-sidebar-nav button:hover {
+  background:color-mix(in srgb,var(--ryo-light-sage) 24%,transparent) !important;
+}
+
+/* Mood rail uses four subdued families. It stays editorial rather than turning into rainbow pills. */
+html[data-ryo-theme="light"] .ryo-toolbar {
+  background:color-mix(in srgb,var(--ryo-light-gold) 10%,var(--ryo-paper)) !important;
+  border-color:color-mix(in srgb,var(--ryo-light-gold) 28%,var(--ryo-line)) !important;
+}
+html[data-ryo-theme="light"] .ryo-chip {
+  background:color-mix(in srgb,var(--ryo-paper-lift) 70%,var(--ryo-paper)) !important;
+}
+html[data-ryo-theme="light"] .ryo-chip:nth-child(4n+1) {
+  background:color-mix(in srgb,var(--ryo-light-sage) 18%,var(--ryo-paper-lift)) !important;
+}
+html[data-ryo-theme="light"] .ryo-chip:nth-child(4n+2) {
+  background:color-mix(in srgb,var(--ryo-light-blue) 18%,var(--ryo-paper-lift)) !important;
+}
+html[data-ryo-theme="light"] .ryo-chip:nth-child(4n+3) {
+  background:color-mix(in srgb,var(--ryo-light-clay) 16%,var(--ryo-paper-lift)) !important;
+}
+html[data-ryo-theme="light"] .ryo-chip:nth-child(4n) {
+  background:color-mix(in srgb,var(--ryo-light-gold) 17%,var(--ryo-paper-lift)) !important;
+}
+html[data-ryo-theme="light"] .ryo-chip:hover {
+  border-color:color-mix(in srgb,var(--ryo-light-clay-strong) 36%,var(--ryo-line)) !important;
+  color:var(--ryo-ink) !important;
+}
+
+/* Section furniture picks up colour without tinting album artwork or text-heavy content. */
+html[data-ryo-theme="light"] .ryo-section-heading-text .ryo-slashes {
+  color:var(--ryo-light-clay-strong) !important;
+}
+html[data-ryo-theme="light"] .ryo-section-rule {
+  background:linear-gradient(
+    90deg,
+    color-mix(in srgb,var(--ryo-light-clay) 62%,var(--ryo-line)),
+    color-mix(in srgb,var(--ryo-light-sage) 52%,var(--ryo-line)) 48%,
+    color-mix(in srgb,var(--ryo-light-blue) 45%,transparent)
+  ) !important;
+  opacity:.82 !important;
+}
+
+/* Supporting surfaces get deliberate semantic tints so everything no longer collapses to beige. */
+html[data-ryo-theme="light"] .ryo-page-context,
+html[data-ryo-theme="light"] .ryo-specimen {
+  background:color-mix(in srgb,var(--ryo-light-gold) 13%,var(--ryo-card)) !important;
+}
+html[data-ryo-theme="light"] .ryo-community-card,
+html[data-ryo-theme="light"] .ryo-listen-room-state {
+  background:color-mix(in srgb,var(--ryo-light-sage) 15%,var(--ryo-card)) !important;
+}
+html[data-ryo-theme="light"] .ryo-listen-block,
+html[data-ryo-theme="light"] .ryo-search-inspector {
+  background:color-mix(in srgb,var(--ryo-light-blue) 13%,var(--ryo-card)) !important;
+}
+html[data-ryo-theme="light"] .ryo-library-empty,
+html[data-ryo-theme="light"] .ryo-search-scanning {
+  background:color-mix(in srgb,var(--ryo-light-clay) 10%,var(--ryo-card)) !important;
+}
+
+/* Queue/detail lane gets a cool paper so it separates from the warm artwork lane. */
+html[data-ryo-theme="light"] .ryo-queue-pane,
+html[data-ryo-theme="light"] .ryo-queue-pane [data-slot="tabs"],
+html[data-ryo-theme="light"] .ryo-queue-pane [data-slot="tabs-content"] {
+  background:color-mix(in srgb,var(--ryo-light-blue) 9%,var(--ryo-paper-lift)) !important;
+}
+html[data-ryo-theme="light"] .ryo-queue-pane [data-slot="tabs-list"] {
+  background:color-mix(in srgb,var(--ryo-light-blue) 16%,var(--ryo-card)) !important;
+}
+html[data-ryo-theme="light"] .ryo-queue-pane .ryo-lane-tab[data-active] {
+  background:var(--ryo-light-blue-strong) !important;
+  border-color:var(--ryo-light-blue-strong) !important;
+  color:#f5efe6 !important;
+}
+
+/* Inputs are warm cream, not white; focus picks up the clay accent. */
+html[data-ryo-theme="light"] input,
+html[data-ryo-theme="light"] textarea,
+html[data-ryo-theme="light"] [data-slot="select-trigger"] {
+  background:color-mix(in srgb,var(--ryo-paper-lift) 84%,var(--ryo-light-gold) 16%) !important;
+}
+html[data-ryo-theme="light"] :where(input,textarea,[data-slot="select-trigger"]):focus {
+  border-color:color-mix(in srgb,var(--ryo-light-clay-strong) 46%,var(--ryo-line)) !important;
+}
