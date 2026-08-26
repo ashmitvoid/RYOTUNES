@@ -75,6 +75,13 @@ Ryotunes does not treat Ryoku as a skin. The Linux build has explicit integratio
 
 The details are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+### Ryoku ecosystem
+
+Ryotunes is designed alongside the Ryoku desktop stack. For the shell itself, installation work, compositor configuration and the wider project:
+
+- [Ryoku Arch on GitHub](https://github.com/neur0map/ryoku-arch)
+- [Join the Ryoku Discord](https://discord.gg/8KjBmUEyKA)
+
 ## Repository map
 
 ```text
