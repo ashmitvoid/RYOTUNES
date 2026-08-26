@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-out="${1:-$root/ryotunes-v2.2.0-final-source.tar.gz}"
+out="${1:-$root/ryotunes-v2.3.0-final-source.tar.gz}"
 
 cd "$root"
 ./scripts/release-check.sh
