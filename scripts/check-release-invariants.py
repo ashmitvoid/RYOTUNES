@@ -92,7 +92,7 @@ req('crate::tray::show_main(&app);' in commands and 'pub async fn close_mini' in
 req('RYOTUNES_APP_ID: &str = "dev.ryoku.ryotunes"' in main and 'RYOTUNES_MAIN_TITLE: &str = "Ryotunes"' in main, 'stable main window identity missing')
 req('args(["keyword", "windowrulev2"' not in main and "arg(\"windowrulev2\")" not in main, 'runtime Hyprland windowrule injection returned')
 req('hl.window_rule({' in rule and 'title = "^(Ryotunes)$"' in rule and 'float  = true' in rule and 'center = true' in rule, 'managed Ryoku floating rule missing')
-req('hl.window_rule({' in packaged_rule and 'title = "^(Ryotunes)$"' in packaged_rule and 'float  = true' in packaged_rule and 'center = true' in packaged_rule, 'packaged Ryoku rule missing')
+req('hl.window_rule({' in packaged_rule and 'title = "^(Ryotunes)$"' in packaged_rule and 'float  = true' in packaged_rule and 'size   = { 1760, 1000 }' in packaged_rule and 'center = true' in packaged_rule, 'packaged Ryoku rule missing')
 req('Ryotunes Mini' in packaged_rule, 'floating rule does not document mini exclusion')
 req('0.92' in main and '0.84' in main and 'monitor.work_area()' in main and 'unmaximize()' in main, 'adaptive 92% x 84% work-area geometry missing')
 req('setfloating' in main and 'clients", "-j"' in main, 'Hyprland defensive fallback missing')
@@ -154,7 +154,7 @@ req('showMenu?: boolean;' in trackrow and 'contextMenu?: boolean;' in trackrow, 
 req('const MAX_READY_ARTWORK = 36' in art_cache and 'new Map<string, true>()' in art_cache, 'bounded artwork readiness cache missing')
 req("typeof image.decode === 'function'" in art_img and 'cancelled' in art_img and 'preview' in art_img, 'decode-before-swap/stale artwork guard missing')
 req('ArtworkImage' in now and 'ArtworkImage' in mini, 'large artwork surfaces do not share artwork pipeline')
-for token in ['--ryo-paper:#c8c4bc','--ryo-paper-lift:#d5d0c7','--ryo-panel:#beb9b0','--ryo-card:#d0cbc2','--ryo-sidebar-surface:#bbb6ad','--ryo-player-surface:#c3beb5','--ryo-ink:#211f1c']:
+for token in ['--ryo-paper:#d2cabd','--ryo-paper-lift:#e2d8c9','--ryo-panel:#c4baab','--ryo-card:#dbd1c3','--ryo-sidebar-surface:#bec6b8','--ryo-player-surface:#c1c7cc','--ryo-ink:#28231e','--ryo-light-sage:#9faa94','--ryo-light-blue:#9aaabc','--ryo-light-clay:#c58f73']:
     req(token in css, f'v2.3 Light token missing: {token}')
 req('professional Light compatibility for legacy dark-only overlay chrome' in css, 'Light-theme legacy surface compatibility pass missing')
 req("'system' | 'light' | 'dark'" in theme and 'prefers-color-scheme: dark' in theme, 'Follow System/Light/Dark engine missing')
@@ -179,7 +179,7 @@ req(w.get('width') == 1760 and w.get('height') == 1000, 'Tauri pre-map main-wind
 req('.ryo-wave-seek:focus-within::after' not in css, 'rectangular seek focus pseudo-element returned')
 req('.ryo-wave-seek::after { content:none !important; }' in css, 'seek focus rectangle suppression missing')
 req('ryo-playerbar-center' in playerbar and '.ryo-playerbar-center { gap:7px !important;' in css, 'bottom transport breathing room missing')
-req('.ryo-music-deck-actions {' in css and 'min-height:43px !important' in css and 'padding:8px 0 5px !important' in css, 'Home deck transport breathing room missing')
+req('.ryo-music-deck-actions {' in css and 'min-height:44px !important' in css and 'padding:7px 0 7px !important' in css, 'Home deck transport breathing room missing')
 req('.ryo-settings-register::after' in css and 'right:52px' in css and 'border-bottom:0 !important' in css, 'Settings close-button divider gap missing')
 req("if (compact) return;" in lyrics and 'const pauseMs = compact ? 1400 : 5000' in lyrics, 'compact lyrics auto-follow ownership missing')
 req('scroller.getBoundingClientRect()' in lyrics and 'line.getBoundingClientRect()' in lyrics, 'compact lyrics robust active-line centering missing')
