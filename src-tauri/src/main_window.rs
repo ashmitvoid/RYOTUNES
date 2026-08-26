@@ -30,7 +30,7 @@ const RYOTUNES_APP_ID: &str = "dev.ryoku.ryotunes";
 #[cfg(target_os = "linux")]
 const RYOTUNES_MAIN_TITLE: &str = "Ryotunes";
 
-/// Ryoku v2.2 installs a persistent `hl.window_rule` drop-in through the Arch replacement package,
+/// Ryoku v2.3 installs a persistent `hl.window_rule` drop-in through the Arch replacement package,
 /// exactly like Ryoku Settings/Ryowalls. Do not append transient `windowrulev2` values at runtime:
 /// those are version-sensitive, accumulate across launches, and in field testing still allowed the
 /// first surface to enter the tiling tree. The post-map IPC helper below remains a defensive fallback
@@ -74,7 +74,7 @@ pub fn enforce_floating_geometry(app: &AppHandle) {
     };
 
     let area = monitor.work_area();
-    // v2.2 field target: a large, centered daily-driver canvas matching the accepted Ryoku
+    // v2.3 field target: a large, centered daily-driver canvas matching the accepted Ryoku
     // reference screenshot. The pre-map JSON fallback is 1760×1000 logical; once mapped, this
     // adaptive pass uses the real monitor work area so smaller/larger displays keep modest margins.
     let max_width = area.size.width.saturating_sub(24).max(640);
@@ -148,7 +148,7 @@ pub fn request_hyprland_float(app: &AppHandle) {
 pub fn request_hyprland_float(_app: &AppHandle) {}
 
 /// Mark the next main-window destruction as an intentional background transition.
-/// v2.2 deliberately does not persist main-window maximize/geometry state: every cold/recreated
+/// v2.3 deliberately does not persist main-window maximize/geometry state: every cold/recreated
 /// surface comes back as the same comfortable centered floating window from tauri.conf.json.
 pub fn prepare_hibernate(_app: &AppHandle) {
     cancel_idle_exit();
