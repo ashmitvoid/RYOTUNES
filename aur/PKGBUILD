@@ -22,12 +22,10 @@ conflicts=('ryotunes-v2.2')
 replaces=('ryotunes-v2.2')
 install='ryotunes-bin.install'
 
-_upstream_pkg="ryotunes-v2.2-${pkgver}-1-x86_64.pkg.tar.zst"
-source_x86_64=("${_upstream_pkg}::https://github.com/ashmitvoid/RYOTUNES/releases/download/v${pkgver}/${_upstream_pkg}")
-sha256sums_x86_64=('5a6a74c746be471c1c66572720705aa03a89440cb00c69028c32c0b66974c743')
-noextract=("${_upstream_pkg}")
+_payload="ryotunes-v${pkgver}-linux-x86_64.tar.zst"
+source_x86_64=("${_payload}::https://github.com/ashmitvoid/RYOTUNES/releases/download/v${pkgver}/${_payload}")
+sha256sums_x86_64=('2214e492c2402cf1f7ec6026cf94d630af6eafb2e272234876558bc0384493ac')
 
 package() {
-  bsdtar -xf "$srcdir/${_upstream_pkg}" -C "$pkgdir"
-  rm -f "$pkgdir/.BUILDINFO" "$pkgdir/.INSTALL" "$pkgdir/.MTREE" "$pkgdir/.PKGINFO"
+  cp -a "$srcdir/usr" "$pkgdir/"
 }
