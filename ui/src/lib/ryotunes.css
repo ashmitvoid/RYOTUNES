@@ -5355,3 +5355,15 @@ html[data-ryo-theme="light"] .ryo-settings-aside {
 @media (prefers-reduced-motion: reduce) {
   .ryo-playerbar button,.ryo-music-deck-actions button { transition:none !important; }
 }
+
+/* v2.2.1 — Home listening console controls need clear air above the deck frame.
+   Keep the existing card size: reclaim a few pixels from the metadata rhythm and give the
+   transport/QUEUE row a balanced internal cushion so button borders never kiss the bottom rule. */
+.ryo-music-deck-track { margin-top:6px !important; }
+.ryo-music-deck-readouts { margin-top:6px !important; padding-top:5px !important; }
+.ryo-music-deck-progress { margin-top:6px !important; }
+.ryo-music-deck-actions {
+  min-height:44px !important;
+  margin-top:6px !important;
+  padding:7px 0 7px !important;
+}
