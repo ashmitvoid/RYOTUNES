@@ -60,6 +60,7 @@ hl.window_rule({
     name   = "float-ryotunes-custom",
     match  = { title = "^(Ryotunes)$" },
     float  = true,
+    size   = { 1760, 1000 },
     center = true,
 })
 -- END RYOTUNES MANAGED WINDOW RULE
