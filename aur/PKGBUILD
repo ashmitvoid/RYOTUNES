@@ -1,0 +1,33 @@
+pkgname=ryotunes-bin
+pkgver=2.2.0
+pkgrel=1
+pkgdesc='Ryoku-native desktop music player with native libmpv playback'
+arch=('x86_64')
+url='https://github.com/ashmitvoid/RYOTUNES'
+license=('GPL-3.0-or-later')
+
+depends=(
+  'webkit2gtk-4.1'
+  'libappindicator-gtk3'
+  'mpv'
+  'openssl'
+  'librsvg'
+  'desktop-file-utils'
+  'hicolor-icon-theme'
+  'xdg-utils'
+)
+
+provides=('ryotunes=2.2.0')
+conflicts=('ryotunes-v2.2')
+replaces=('ryotunes-v2.2')
+install='ryotunes-bin.install'
+
+_upstream_pkg="ryotunes-v2.2-${pkgver}-1-x86_64.pkg.tar.zst"
+source_x86_64=("${_upstream_pkg}::https://github.com/ashmitvoid/RYOTUNES/releases/download/v${pkgver}/${_upstream_pkg}")
+sha256sums_x86_64=('5a6a74c746be471c1c66572720705aa03a89440cb00c69028c32c0b66974c743')
+noextract=("${_upstream_pkg}")
+
+package() {
+  bsdtar -xf "$srcdir/${_upstream_pkg}" -C "$pkgdir"
+  rm -f "$pkgdir/.BUILDINFO" "$pkgdir/.INSTALL" "$pkgdir/.MTREE" "$pkgdir/.PKGINFO"
+}
