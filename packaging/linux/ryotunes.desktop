@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Ryotunes
+GenericName=Music Player
+Comment=Ryoku-oriented desktop music client
+Exec=ryotunes
+Icon=ryotunes
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;youtube;player;ryoku;lyrics;
+StartupNotify=true
+StartupWMClass=dev.ryoku.ryotunes

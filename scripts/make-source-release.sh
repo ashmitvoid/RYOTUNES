@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+out="${1:-$root/ryotunes-v2.2.0-final-source.tar.gz}"
+
+"$root/scripts/release-check.sh"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+stage="$tmp/ryotunes-v2.2.0"
+mkdir -p "$stage"
+
+tar \
+  --exclude='.git' \
+  --exclude='target' \
+  --exclude='ui/node_modules' \
+  --exclude='ui/build' \
+  --exclude='ui/.svelte-kit' \
+  --exclude='__pycache__' \
+  --exclude='*.pyc' \
+  --exclude='*.sqlite' \
+  --exclude='*.sqlite-shm' \
+  --exclude='*.sqlite-wal' \
+  --exclude='*.log' \
+  --exclude='src-tauri/lastfm.keys' \
+  --exclude='ryotunes-v2.2.0-final-source.tar.gz' \
+  -C "$root" -cf - . | tar -C "$stage" -xf -
+
+tar -C "$tmp" -czf "$out" ryotunes-v2.2.0
+printf 'Created %s\n' "$out"
