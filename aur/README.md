@@ -1,5 +1,15 @@
 # ryotunes-bin AUR packaging
 
-This directory contains the binary AUR recipe for Ryotunes. It downloads the precompiled x86_64 pacman package from the matching GitHub Release; it does not compile Ryotunes locally.
+This directory is the AUR recipe for Ryotunes' precompiled x86_64 Linux release.
 
-Before publishing to the AUR, verify the release asset exists at the URL in `PKGBUILD`, then run `makepkg --printsrcinfo > .SRCINFO` on an Arch-based system and commit the generated `.SRCINFO`.
+The AUR package downloads the versioned binary payload from the matching GitHub Release and repackages it for pacman. It does **not** build the Tauri/Rust/Svelte application locally.
+
+Before publishing or updating the AUR package:
+
+1. Confirm the matching GitHub Release asset exists.
+2. Verify its SHA-256 against `PKGBUILD`.
+3. Run `makepkg --printsrcinfo > .SRCINFO` on an Arch-based system.
+4. Test with `makepkg -si`.
+5. Commit `PKGBUILD`, `.SRCINFO`, `ryotunes-bin.install`, and `LICENSE` to the AUR package repository.
+
+The packaged application remains GPL-3.0-or-later. The AUR packaging files in this directory are offered under 0BSD.
