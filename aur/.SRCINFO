@@ -1,0 +1,24 @@
+pkgbase = ryotunes-bin
+	pkgdesc = Ryoku-native desktop music player with native libmpv playback
+	pkgver = 2.2.0
+	pkgrel = 1
+	url = https://github.com/ashmitvoid/RYOTUNES
+	install = ryotunes-bin.install
+	arch = x86_64
+	license = GPL-3.0-or-later
+	depends = webkit2gtk-4.1
+	depends = libappindicator-gtk3
+	depends = mpv
+	depends = openssl
+	depends = librsvg
+	depends = desktop-file-utils
+	depends = hicolor-icon-theme
+	depends = xdg-utils
+	provides = ryotunes=2.2.0
+	conflicts = ryotunes-v2.2
+	replaces = ryotunes-v2.2
+	noextract = ryotunes-v2.2-2.2.0-1-x86_64.pkg.tar.zst
+	source_x86_64 = ryotunes-v2.2-2.2.0-1-x86_64.pkg.tar.zst::https://github.com/ashmitvoid/RYOTUNES/releases/download/v2.2.0/ryotunes-v2.2-2.2.0-1-x86_64.pkg.tar.zst
+	sha256sums_x86_64 = 5a6a74c746be471c1c66572720705aa03a89440cb00c69028c32c0b66974c743
+
+pkgname = ryotunes-bin
