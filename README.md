@@ -46,9 +46,19 @@ That split is the centre of the project: the player should feel rich when it is 
 
 Ryotunes v2.2 targets **x86_64 Ryoku, CachyOS and Arch-based systems**.
 
-Current public package identity: **`ryotunes-v2.2 2.2.0-1`**.
+The normal user release is **precompiled**. Installing Ryotunes does not require Node, pnpm, Rust, Cargo or a local Tauri build.
 
-The normal user distribution is a **precompiled pacman package**. Users should not need Node, pnpm, Rust or a local Tauri build. The release package is installed with pacman (or, once the binary AUR package is published, through `paru -S ryotunes-bin`).
+Download `ryotunes-v2.2-2.2.0-1-x86_64.pkg.tar.zst` from the [v2.2.0 release](https://github.com/ashmitvoid/RYOTUNES/releases/tag/v2.2.0), then install it with:
+
+```bash
+sudo pacman -U ./ryotunes-v2.2-2.2.0-1-x86_64.pkg.tar.zst
+```
+
+A binary AUR recipe is maintained in [`aur/`](aur/) and is intended to make the user path simply:
+
+```bash
+paru -S ryotunes-bin
+```
 
 For source builds and development setup, see [`docs/INSTALL-ARCH.md`](docs/INSTALL-ARCH.md).
 
