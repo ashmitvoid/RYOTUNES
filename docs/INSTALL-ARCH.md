@@ -7,7 +7,7 @@ Ryotunes is primarily distributed as a precompiled x86_64 pacman package. Normal
 After downloading the package from the matching GitHub release:
 
 ```bash
-sudo pacman -U ./ryotunes-v2.2-2.2.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst
 ```
 
 The Ryoku distribution bundle also carries the managed migration/rollback helper used when replacing the stock Ryoku entry point. Use that bundle on systems where Ryotunes is already provided by `ryoku-desktop`.
