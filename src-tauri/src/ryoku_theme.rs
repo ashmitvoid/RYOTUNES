@@ -188,7 +188,9 @@ pub fn spawn_watcher(app: tauri::AppHandle) {
                 let mut relevant = false;
 
                 while offset + header <= n {
-                    let ev = &*(buf.as_ptr().add(offset).cast::<libc::inotify_event>());
+                    let ev = std::ptr::read_unaligned(
+                        buf.as_ptr().add(offset).cast::<libc::inotify_event>(),
+                    );
                     let name_len = ev.len as usize;
                     if offset + header + name_len > n {
                         break;
