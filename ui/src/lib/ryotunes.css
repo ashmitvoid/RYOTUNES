@@ -5572,3 +5572,206 @@ html[data-ryo-theme="light"] [data-slot="select-trigger"] {
 html[data-ryo-theme="light"] :where(input,textarea,[data-slot="select-trigger"]):focus {
   border-color:color-mix(in srgb,var(--ryo-light-clay-strong) 46%,var(--ryo-line)) !important;
 }
+
+/* v2.3 Ryoku live-palette compatibility.
+   Older queue/search/command/lyrics polish blocks intentionally hard-coded one dark palette. That
+   made named Ryoku dark schemes look partly retinted and partly charcoal. Keep their geometry, but
+   make their paint semantic so every named/wallpaper palette reaches the complete interaction
+   surface. This final layer is static CSS only and adds no compositor or timer work. */
+html[data-ryo-theme] {
+  --ryo-lane:var(--ryo-paper);
+  --ryo-lane-lift:var(--ryo-paper-lift);
+  --ryo-lane-hover:var(--ryo-tint10);
+  --ryo-lane-active:var(--ryo-tint16);
+}
+
+html[data-ryo-theme] .ryo-queue-pane {
+  --background:var(--ryo-paper) !important;
+  --foreground:var(--ryo-ink) !important;
+  --card:var(--ryo-paper-lift) !important;
+  --card-foreground:var(--ryo-ink) !important;
+  --popover:var(--ryo-paper-lift) !important;
+  --popover-foreground:var(--ryo-ink) !important;
+  --secondary:var(--ryo-panel) !important;
+  --secondary-foreground:var(--ryo-ink-dim) !important;
+  --muted:var(--ryo-panel) !important;
+  --muted-foreground:var(--ryo-ink-muted) !important;
+  --accent:var(--ryo-tint10) !important;
+  --accent-foreground:var(--ryo-ink) !important;
+  --primary:var(--ryo-bone) !important;
+  --primary-foreground:var(--ryo-ink-on-bone) !important;
+  --border:var(--ryo-line) !important;
+  --input:var(--ryo-line) !important;
+  --color-background:var(--ryo-paper) !important;
+  --color-foreground:var(--ryo-ink) !important;
+  --color-card:var(--ryo-paper-lift) !important;
+  --color-card-foreground:var(--ryo-ink) !important;
+  --color-popover:var(--ryo-paper-lift) !important;
+  --color-popover-foreground:var(--ryo-ink) !important;
+  --color-secondary:var(--ryo-panel) !important;
+  --color-secondary-foreground:var(--ryo-ink-dim) !important;
+  --color-muted:var(--ryo-panel) !important;
+  --color-muted-foreground:var(--ryo-ink-muted) !important;
+  --color-accent:var(--ryo-tint10) !important;
+  --color-accent-foreground:var(--ryo-ink) !important;
+  --color-primary:var(--ryo-bone) !important;
+  --color-primary-foreground:var(--ryo-ink-on-bone) !important;
+  --color-border:var(--ryo-line) !important;
+  color-scheme:normal;
+  background:var(--ryo-paper) !important;
+  color:var(--ryo-ink) !important;
+  scrollbar-color:var(--ryo-line-strong) transparent;
+}
+html[data-ryo-theme] .ryo-queue-pane [data-slot="tabs"],
+html[data-ryo-theme] .ryo-queue-pane [role="tabpanel"],
+html[data-ryo-theme] .ryo-queue-pane [data-slot="tabs-content"],
+html[data-ryo-theme] .ryo-queue-pane > [data-slot="tabs"] > [data-slot="tabs-content"],
+html[data-ryo-theme] .ryo-queue-pane [data-slot="tabs-content"] > div,
+html[data-ryo-theme] .ryo-queue-pane [data-slot="tabs-content"] > p {
+  background:var(--ryo-paper) !important;
+  color:var(--ryo-ink) !important;
+}
+html[data-ryo-theme] .ryo-queue-pane [role="tablist"],
+html[data-ryo-theme] .ryo-queue-pane [data-slot="tabs-list"] {
+  background:var(--ryo-paper-lift) !important;
+  border-color:var(--ryo-line) !important;
+}
+html[data-ryo-theme] .ryo-queue-pane [role="tab"][data-state="active"],
+html[data-ryo-theme] .ryo-queue-pane .ryo-lane-tab[data-active] {
+  background:var(--ryo-bone) !important;
+  color:var(--ryo-ink-on-bone) !important;
+  border-color:var(--ryo-bone) !important;
+  box-shadow:none !important;
+}
+html[data-ryo-theme] .ryo-queue-pane [role="tab"]:not([data-state="active"]),
+html[data-ryo-theme] .ryo-queue-pane .ryo-lane-tab {
+  color:var(--ryo-ink-muted) !important;
+}
+html[data-ryo-theme] .ryo-queue-pane [role="listitem"]:hover,
+html[data-ryo-theme] .ryo-queue-pane .bg-accent\/10,
+html[data-ryo-theme] .ryo-queue-pane .hover\:bg-accent\/10:hover,
+html[data-ryo-theme] .ryo-queue-pane .hover\:bg-accent\/20:hover {
+  background:var(--ryo-tint10) !important;
+}
+html[data-ryo-theme] .ryo-queue-pane [data-slot="skeleton"],
+html[data-ryo-theme] .ryo-queue-pane .animate-pulse.bg-muted {
+  background:var(--ryo-tint16) !important;
+}
+html[data-ryo-theme] .ryo-queue-pane .border-t,
+html[data-ryo-theme] .ryo-queue-pane .border-b,
+html[data-ryo-theme] .ryo-queue-pane .border-l,
+html[data-ryo-theme] .ryo-queue-pane .border-r {
+  border-color:var(--ryo-line-soft) !important;
+}
+html[data-ryo-theme] .ryo-queue-pane ::-webkit-scrollbar-thumb {
+  background:var(--ryo-line-strong) !important;
+}
+
+html[data-ryo-theme] .ryo-search-suggest {
+  border-color:var(--ryo-line) !important;
+  background:var(--ryo-card) !important;
+  color:var(--ryo-ink) !important;
+  box-shadow:0 18px 48px color-mix(in srgb,var(--ryo-ink) 16%,transparent) !important;
+  scrollbar-color:var(--ryo-line-strong) transparent;
+}
+html[data-ryo-theme] .ryo-search-suggest [data-slot="skeleton"] {
+  background:var(--ryo-tint16) !important;
+}
+html[data-ryo-theme] .ryo-search-row { color:var(--ryo-ink) !important; }
+html[data-ryo-theme] .ryo-search-row:hover,
+html[data-ryo-theme] .ryo-search-row-active {
+  background:var(--ryo-tint10) !important;
+}
+html[data-ryo-theme] .ryo-search-row.border-b,
+html[data-ryo-theme] .ryo-search-all { border-color:var(--ryo-line-soft) !important; }
+html[data-ryo-theme] .ryo-search-all {
+  background:var(--ryo-paper-lift) !important;
+  color:var(--ryo-ink-muted) !important;
+}
+html[data-ryo-theme] .ryo-search-all:hover {
+  background:var(--ryo-panel) !important;
+  color:var(--ryo-ink) !important;
+}
+html[data-ryo-theme] .ryo-search-suggest ::-webkit-scrollbar-thumb {
+  background:var(--ryo-line-strong) !important;
+}
+
+html[data-ryo-theme] .ryo-command-dialog,
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command"],
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command-input-wrapper"],
+html[data-ryo-theme] .ryo-command-dialog .ryo-command-list,
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command-list"] {
+  background:var(--ryo-card) !important;
+  color:var(--ryo-ink) !important;
+  border-color:var(--ryo-line) !important;
+}
+html[data-ryo-theme] .ryo-command-dialog [data-slot="input-group"] {
+  background:var(--ryo-paper-lift) !important;
+  border-color:var(--ryo-line) !important;
+}
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command-input"] {
+  color:var(--ryo-ink) !important;
+  caret-color:var(--ryo-sun) !important;
+}
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command-input"]::placeholder {
+  color:var(--ryo-ink-faint) !important;
+}
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command-group"],
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command-item"] {
+  color:var(--ryo-ink) !important;
+}
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command-item"][data-selected],
+html[data-ryo-theme] .ryo-command-dialog [data-slot="command-item"]:hover {
+  background:var(--ryo-tint10) !important;
+  color:var(--ryo-ink) !important;
+}
+html[data-ryo-theme] .ryo-command-dialog [data-slot="skeleton"] {
+  background:var(--ryo-tint16) !important;
+}
+html[data-ryo-theme] .ryo-command-dialog ::-webkit-scrollbar-thumb {
+  background:var(--ryo-line-strong) !important;
+}
+
+html[data-ryo-theme] .ryo-lyrics-resolving,
+html[data-ryo-theme] .ryo-lyrics-empty {
+  background:var(--ryo-paper-lift) !important;
+  border-color:var(--ryo-line) !important;
+}
+html[data-ryo-theme] .ryo-lyrics-resolving-head,
+html[data-ryo-theme] .ryo-lyrics-resolving-foot {
+  color:var(--ryo-ink-muted) !important;
+  border-color:var(--ryo-line-soft) !important;
+}
+html[data-ryo-theme] .ryo-lyrics-resolving-head b,
+html[data-ryo-theme] .ryo-lyrics-empty > span,
+html[data-ryo-theme] .ryo-lyrics-empty-readout b {
+  color:var(--ryo-ink-faint) !important;
+}
+html[data-ryo-theme] .ryo-lyrics-resolving-meta strong,
+html[data-ryo-theme] .ryo-lyrics-empty > strong {
+  color:var(--ryo-ink) !important;
+}
+html[data-ryo-theme] .ryo-lyrics-resolving-meta small,
+html[data-ryo-theme] .ryo-lyrics-empty > p,
+html[data-ryo-theme] .ryo-lyrics-empty-readout em,
+html[data-ryo-theme] .ryo-lyrics-empty > button {
+  color:var(--ryo-ink-muted) !important;
+}
+html[data-ryo-theme] .ryo-lyrics-empty-mark,
+html[data-ryo-theme] .ryo-lyrics-empty > button {
+  border-color:var(--ryo-line) !important;
+}
+html[data-ryo-theme] .ryo-lyrics-empty > button:hover {
+  background:var(--ryo-tint10) !important;
+  color:var(--ryo-ink) !important;
+}
+
+html[data-ryo-theme] .npstable-tabs-list {
+  background:var(--ryo-paper-lift) !important;
+}
+html[data-ryo-theme] .npstable-focus-toggle {
+  color:var(--ryo-ink-muted) !important;
+}
+html[data-ryo-theme] .npstable-focus-toggle:hover {
+  color:var(--ryo-ink) !important;
+}
