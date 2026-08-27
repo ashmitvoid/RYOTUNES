@@ -14,7 +14,7 @@ grep -q '"identifier": "dev.ryoku.ryotunes"' src-tauri/tauri.conf.json || { say 
 
 say check 'private-machine and secret patterns'
 # Do not scan license/upstream attribution for project names. This scan is for actual release data.
-if grep -RniE --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules --exclude='UPSTREAM.md' --exclude='release-check.sh' \
+if grep -RniE --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules --exclude-dir=.pnpm-store --exclude='UPSTREAM.md' --exclude='release-check.sh' \
   '(/home/[A-Za-z0-9._-]+/|/Users/[A-Za-z0-9._-]+/|[A-Z]:\\Users\\[^\\]+\\|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|[A-Za-z0-9-]+\.ts\.net)' .; then
   say FAIL 'machine-specific path, endpoint, or secret-like value found'
   fail=1
