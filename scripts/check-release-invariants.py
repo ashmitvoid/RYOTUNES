@@ -47,7 +47,9 @@ browse = read('crates/innertube/src/models/browse.rs')
 settings = read('ui/src/lib/components/SettingsDialog.svelte')
 zoom = read('ui/src/lib/zoom.ts')
 playerbar = read('ui/src/lib/components/PlayerBar.svelte')
-layout_css = read('ui/src/routes/layout.css')\nryoku_live = read('ui/src/lib/ryoku-live.ts')\nryoku_theme = read('src-tauri/src/ryoku_theme.rs')
+layout_css = read('ui/src/routes/layout.css')
+ryoku_live = read('ui/src/lib/ryoku-live.ts')
+ryoku_theme = read('src-tauri/src/ryoku_theme.rs')
 
 # --- frozen v2.3 identity ----------------------------------------------------
 req('version = "2.3.0"' in cargo, 'workspace version is not 2.3.0')
