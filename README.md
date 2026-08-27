@@ -157,6 +157,8 @@ The design rules behind the interface are documented in **[docs/DESIGN.md](docs/
 
 Ryotunes v2.3 targets **x86_64 Ryoku, CachyOS and Arch-based systems**.
 
+Package identity: **`ryotunes-v2.3 2.3.0-1`**.
+
 The normal user path is a **prebuilt package**. End users do not need Node, pnpm, Rust, Cargo or a local Tauri build.
 
 1. Open **[GitHub Releases](https://github.com/ashmitvoid/ryotunes/releases/latest)**.
