@@ -77,6 +77,7 @@ jobs:
       - name: Build release assets
         run: |
           runuser -u builder -- env HOME="$BUILDER_HOME" PATH="$BUILDER_HOME/.cargo/bin:/usr/bin" bash -lc "
+            set -euo pipefail
             cd '$GITHUB_WORKSPACE'
             chmod +x scripts/build-replacement-package.sh scripts/make-source-release.sh scripts/release-check.sh scripts/ryoku-window-rule.sh
             rm -rf dist
