@@ -25,9 +25,8 @@
 </div>
 
 <br />
-
-<img src="docs/assets/ryotunes-surface.svg" alt="Illustrated Ryotunes v2.3 Home surface" width="100%" />
-<img width="3369" height="2017" alt="2026_08_27_02_44_21_screenshot" src="https://github.com/user-attachments/assets/44aaf6cc-f88e-4c1d-97ff-c44e45d4c72b" />
+xmg src="docs/assets/ryotunes-surface.svg" alt="Illustrated Ryotunes v2.3 Home surface"  />
+<img width="3369" height="2017" alt="2026_08_27_02_44_21_screenshot" src="https://github.com/user-attachments/assets/44aaf6cc-f88e-4c1d-97ff-c44e45d4c72b" width="100%"/>
 
 <p align="center"><sub>Repository artwork based on the live v2.3 Home layout and Ryoku visual language.</sub></p>
 
