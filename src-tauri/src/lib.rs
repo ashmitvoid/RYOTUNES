@@ -8,8 +8,8 @@ mod http;
 mod lastfm;
 mod listentogether;
 mod local;
-mod main_window;
 mod lyrics;
+mod main_window;
 mod media;
 mod mini;
 mod orchestrator;
@@ -197,10 +197,11 @@ pub fn run() {
             let db_path = data_dir.join("ryotunes.sqlite");
             if !db_path.exists() {
                 if let Ok(entries) = std::fs::read_dir(&data_dir) {
-                    let mut candidates = entries
-                        .filter_map(Result::ok)
-                        .map(|e| e.path())
-                        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("sqlite") && p != &db_path);
+                    let mut candidates =
+                        entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| {
+                            p.extension().and_then(|x| x.to_str()) == Some("sqlite")
+                                && p != &db_path
+                        });
                     if let Some(previous) = candidates.next() {
                         if candidates.next().is_none() {
                             if std::fs::rename(&previous, &db_path).is_err() {
@@ -276,7 +277,8 @@ pub fn run() {
             // Listen Together has no baked-in server. Community builds can point it at any
             // compatible ryotunes-sync endpoint; a fresh install stays disconnected until the
             // user chooses one.
-            let lt_url = db.get_setting("lt_server_url").filter(|u| !u.is_empty()).unwrap_or_default();
+            let lt_url =
+                db.get_setting("lt_server_url").filter(|u| !u.is_empty()).unwrap_or_default();
             let (lt, lt_sync_rx) = listentogether::LtSession::new(handle.clone(), lt_url);
 
             let app_state = Arc::new(AppState::new(
@@ -651,7 +653,8 @@ fn spawn_event_pump(
                 PlayerEvent::Playing(playing) => {
                     let ui = main_window::has_ui(&app);
                     if ui {
-                        let _ = app.emit("playback-state", if playing { "playing" } else { "paused" });
+                        let _ =
+                            app.emit("playback-state", if playing { "playing" } else { "paused" });
                     }
                     if !playing {
                         state.flush_position(); // persist exact resume position on pause

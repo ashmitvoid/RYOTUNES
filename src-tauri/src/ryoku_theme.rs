@@ -90,10 +90,7 @@ pub fn tokens() -> Value {
         .and_then(Value::as_f64)
         .filter(|v| *v > 0.0)
         .unwrap_or(1.0);
-    let reduce = motion
-        .and_then(|v| v.get("reduce"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let reduce = motion.and_then(|v| v.get("reduce")).and_then(Value::as_bool).unwrap_or(false);
 
     let light = hex_luminance(&paper).is_some_and(|v| v > 0.5);
     let source = if named.is_some() {

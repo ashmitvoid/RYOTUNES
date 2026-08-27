@@ -22,7 +22,6 @@ static MAIN_READY: AtomicBool = AtomicBool::new(false);
 
 const IDLE_EXIT_GRACE: Duration = Duration::from_secs(5 * 60);
 
-
 /// Stable Wayland identity used by Tauri/GTK and Hyprland. `enableGTKAppId` in tauri.conf.json is
 /// what makes this the actual Wayland app id instead of merely Tauri's bundle identifier.
 #[cfg(target_os = "linux")]
@@ -62,11 +61,8 @@ pub fn enforce_floating_geometry(app: &AppHandle) {
     let _ = win.set_fullscreen(false);
     let _ = win.unmaximize();
 
-    let monitor = win
-        .current_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| win.primary_monitor().ok().flatten());
+    let monitor =
+        win.current_monitor().ok().flatten().or_else(|| win.primary_monitor().ok().flatten());
     let Some(monitor) = monitor else {
         let _ = win.set_size(PhysicalSize::new(1760u32, 1000u32));
         let _ = win.center();
@@ -90,7 +86,6 @@ pub fn enforce_floating_geometry(app: &AppHandle) {
     let _ = win.set_position(PhysicalPosition::new(x, y));
 }
 
-
 /// Ask Hyprland to treat Ryotunes as a floating daily-driver window.
 ///
 /// Wayland clients cannot universally declare "float me"; tiling vs floating is compositor policy.
@@ -109,26 +104,38 @@ pub fn request_hyprland_float(app: &AppHandle) {
         // start/recreated WebView. Retry briefly without blocking the UI or the Tauri event loop.
         for delay in [40u64, 80, 140, 220] {
             tokio::time::sleep(Duration::from_millis(delay)).await;
-            let output = match std::process::Command::new("hyprctl").args(["clients", "-j"]).output() {
-                Ok(output) if output.status.success() => output,
-                _ => return,
+            let output =
+                match std::process::Command::new("hyprctl").args(["clients", "-j"]).output() {
+                    Ok(output) if output.status.success() => output,
+                    _ => return,
+                };
+            let Ok(clients) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+                return;
             };
-            let Ok(clients) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else { return };
             let Some(client) = clients.as_array().and_then(|rows| {
                 let pid = std::process::id() as u64;
                 // A mini player can briefly coexist while the main WebView is reconstructed. Match
                 // the main surface's stable GTK app id + title, not merely the shared process PID.
                 rows.iter()
                     .filter(|row| row.get("pid").and_then(|v| v.as_u64()) == Some(pid))
-                    .filter(|row| row.get("class").and_then(|v| v.as_str()) == Some(RYOTUNES_APP_ID))
-                    .filter(|row| row.get("title").and_then(|v| v.as_str()) == Some(RYOTUNES_MAIN_TITLE))
+                    .filter(|row| {
+                        row.get("class").and_then(|v| v.as_str()) == Some(RYOTUNES_APP_ID)
+                    })
+                    .filter(|row| {
+                        row.get("title").and_then(|v| v.as_str()) == Some(RYOTUNES_MAIN_TITLE)
+                    })
                     .find(|row| !row.get("floating").and_then(|v| v.as_bool()).unwrap_or(false))
                     .or_else(|| {
                         rows.iter()
                             .filter(|row| row.get("pid").and_then(|v| v.as_u64()) == Some(pid))
-                            .find(|row| row.get("title").and_then(|v| v.as_str()) == Some(RYOTUNES_MAIN_TITLE))
+                            .find(|row| {
+                                row.get("title").and_then(|v| v.as_str())
+                                    == Some(RYOTUNES_MAIN_TITLE)
+                            })
                     })
-            }) else { continue };
+            }) else {
+                continue;
+            };
             let Some(address) = client.get("address").and_then(|v| v.as_str()) else { return };
             let floating = client.get("floating").and_then(|v| v.as_bool()).unwrap_or(false);
             if !floating {
@@ -328,9 +335,8 @@ pub fn request_quit(app: &AppHandle) {
     crate::mini::save_position(app);
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        let state = handle
-            .try_state::<std::sync::Arc<AppState>>()
-            .map(|state| state.inner().clone());
+        let state =
+            handle.try_state::<std::sync::Arc<AppState>>().map(|state| state.inner().clone());
         if let Some(state) = state {
             state.shutdown_for_quit().await;
         }
@@ -393,7 +399,6 @@ pub fn trim_after_hibernate() {
 
 #[cfg(not(target_os = "linux"))]
 pub fn trim_after_hibernate() {}
-
 
 #[cfg(test)]
 mod tests {

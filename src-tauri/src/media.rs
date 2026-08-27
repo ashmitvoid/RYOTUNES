@@ -19,9 +19,17 @@ use crate::state::AppState;
 
 /// Update messages: app → media-controls owner thread.
 enum MediaUpdate {
-    Metadata { title: String, artist: String, album: Option<String>, cover: Option<String> },
+    Metadata {
+        title: String,
+        artist: String,
+        album: Option<String>,
+        cover: Option<String>,
+    },
     Duration(f64),
-    Playback { playing: bool, pos: f64 },
+    Playback {
+        playing: bool,
+        pos: f64,
+    },
     /// Deterministic teardown for explicit Quit. The acknowledgement is sent only after the
     /// platform media object has been stopped/cleared and is about to be dropped.
     Shutdown(Sender<()>),

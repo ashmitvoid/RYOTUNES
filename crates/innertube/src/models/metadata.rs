@@ -1272,8 +1272,12 @@ mod tests {
                 "actions": [{ "setVideoId": "SVID", "action": "ACTION_REMOVE_VIDEO" }]
             } } }
         }] } });
-        let readonly_menu = json!({ "menuRenderer": { "items": [{ "menuNavigationItemRenderer": {} }] } });
-        assert_eq!(parse_list_item(&row(removable_menu)).unwrap().set_video_id.as_deref(), Some("SVID"));
+        let readonly_menu =
+            json!({ "menuRenderer": { "items": [{ "menuNavigationItemRenderer": {} }] } });
+        assert_eq!(
+            parse_list_item(&row(removable_menu)).unwrap().set_video_id.as_deref(),
+            Some("SVID")
+        );
         assert_eq!(parse_list_item(&row(readonly_menu)).unwrap().set_video_id, None);
     }
 

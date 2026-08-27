@@ -114,12 +114,7 @@ impl Player {
             .spawn(move || event_loop(ev, tx, event_idle_active))
             .expect("spawn mpv event thread");
 
-        Ok(Player {
-            mpv,
-            events: Some(rx),
-            idle_active,
-            af: std::sync::Mutex::new((None, 0)),
-        })
+        Ok(Player { mpv, events: Some(rx), idle_active, af: std::sync::Mutex::new((None, 0)) })
     }
 
     /// Take the event receiver (once).

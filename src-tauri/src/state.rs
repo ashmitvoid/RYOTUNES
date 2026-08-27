@@ -748,8 +748,10 @@ impl AppState {
                 stream_client: "cache".to_owned(),
             });
         }
-        let data =
-            self.orchestrator.resolve(video_id, is_upload, self.quality(), &self.disabled_clients()).await?;
+        let data = self
+            .orchestrator
+            .resolve(video_id, is_upload, self.quality(), &self.disabled_clients())
+            .await?;
         // Never cache rustypipe URLs: googlevideo serves them only for bounded-Range requests,
         // which mpv doesn't send → LOADING_FAILED(-13). Caching one poisons the videoId for ~6h.
         if data.stream_client != "rustypipe" && !is_upload {
@@ -1714,10 +1716,8 @@ impl AppState {
             if !changed {
                 return;
             }
-            let _ = me.app.emit(
-                "rating",
-                serde_json::json!({ "videoId": video_id, "rating": rating }),
-            );
+            let _ =
+                me.app.emit("rating", serde_json::json!({ "videoId": video_id, "rating": rating }));
         });
     }
 
@@ -1990,7 +1990,9 @@ impl AppState {
             return;
         }
         let Some(ping) = ping else {
-            tracing::info!("no watch-history ping for this play (no client returned a tracking URL)");
+            tracing::info!(
+                "no watch-history ping for this play (no client returned a tracking URL)"
+            );
             return;
         };
         let Some(client) = self.clients.get(&ping.client).cloned() else {
@@ -2553,7 +2555,9 @@ impl AppState {
             let repeat_was_one = {
                 let mut q = self.queue.lock().await;
                 let was = q.repeat == RepeatMode::One;
-                if was { q.repeat = RepeatMode::Off; }
+                if was {
+                    q.repeat = RepeatMode::Off;
+                }
                 q.lookahead_loaded = None;
                 q.lookahead_client = None;
                 q.lookahead_gain = None;
