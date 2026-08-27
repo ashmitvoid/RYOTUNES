@@ -5356,7 +5356,7 @@ html[data-ryo-theme="light"] .ryo-settings-aside {
   .ryo-playerbar button,.ryo-music-deck-actions button { transition:none !important; }
 }
 
-/* v2.2.1 — Home listening console controls need clear air above the deck frame.
+/* v2.3 — Home listening console controls need clear air above the deck frame.
    Keep the existing card size: reclaim a few pixels from the metadata rhythm and give the
    transport/QUEUE row a balanced internal cushion so button borders never kiss the bottom rule. */
 .ryo-music-deck-track { margin-top:6px !important; }
@@ -5368,7 +5368,7 @@ html[data-ryo-theme="light"] .ryo-settings-aside {
   padding:7px 0 7px !important;
 }
 
-/* v2.2.1 — richer light theme.
+/* v2.3 — richer light theme.
    Keep the restrained Ryoku instrument, but give each plane its own muted colour family so light
    mode reads as designed rather than as one beige sheet. These are static fills/gradients only:
    no new animation or compositor-heavy effects. */
@@ -5389,10 +5389,13 @@ html[data-ryo-theme="light"] {
 
   --ryo-light-sage:#9faa94;
   --ryo-light-sage-strong:#556454;
+  --ryo-light-on-sage:#f4efe6;
   --ryo-light-blue:#9aaabc;
   --ryo-light-blue-strong:#516273;
+  --ryo-light-on-blue:#f5efe6;
   --ryo-light-clay:#c58f73;
   --ryo-light-clay-strong:#985b45;
+  --ryo-light-on-clay:#fff4e9;
   --ryo-light-gold:#c0a467;
   --ryo-light-rose:#b98c92;
 
@@ -5473,7 +5476,7 @@ html[data-ryo-theme="light"] .ryo-playerbar .ryo-transport-primary:focus-visible
 html[data-ryo-theme="light"] .ryo-playerbar .ryo-transport-primary:active {
   background:var(--ryo-light-clay-strong) !important;
   border-color:var(--ryo-light-clay-strong) !important;
-  color:#fff4e9 !important;
+  color:var(--ryo-light-on-clay) !important;
 }
 
 /* Navigation active state is deep sage; hover state keeps the same family at low intensity. */
@@ -5481,7 +5484,7 @@ html[data-ryo-theme="light"] .ryo-sidebar-nav .bg-primary,
 html[data-ryo-theme="light"] .ryo-sidebar-nav button.bg-primary {
   background:var(--ryo-light-sage-strong) !important;
   border-color:var(--ryo-light-sage-strong) !important;
-  color:#f4efe6 !important;
+  color:var(--ryo-light-on-sage) !important;
 }
 html[data-ryo-theme="light"] .ryo-sidebar-nav a:hover,
 html[data-ryo-theme="light"] .ryo-sidebar-nav button:hover {
@@ -5557,7 +5560,7 @@ html[data-ryo-theme="light"] .ryo-queue-pane [data-slot="tabs-list"] {
 html[data-ryo-theme="light"] .ryo-queue-pane .ryo-lane-tab[data-active] {
   background:var(--ryo-light-blue-strong) !important;
   border-color:var(--ryo-light-blue-strong) !important;
-  color:#f5efe6 !important;
+  color:var(--ryo-light-on-blue) !important;
 }
 
 /* Inputs are warm cream, not white; focus picks up the clay accent. */
