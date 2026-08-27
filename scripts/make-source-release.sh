@@ -14,6 +14,7 @@ tar \
   --exclude='.git' \
   --exclude='target' \
   --exclude='ui/node_modules' \
+  --exclude='.pnpm-store' \
   --exclude='ui/build' \
   --exclude='ui/.svelte-kit' \
   --exclude='__pycache__' \
