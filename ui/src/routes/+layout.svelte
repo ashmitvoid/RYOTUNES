@@ -93,7 +93,7 @@
 	// until a second launch. Retry a handful of times while this WebView is alive; native reveal is
 	// idempotent and still happens only after the UI tree exists, so this cannot reintroduce a blank
 	// boot frame.
-	function acknowledgeFrontend(label: 'main' | 'mini') {
+	function acknowledgeFrontend(label: 'main' | 'mini', beforeReveal?: Promise<void>) {
 		let cancelled = false;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const delays = [0, 45, 120, 260, 520, 900];
@@ -111,7 +111,9 @@
 		// `visible:false`, which deadlocks the only callback capable of revealing that window.
 		// Start the bridge handshake immediately; retries use ordinary timers, which continue
 		// to run for a hidden WebView. Native code also owns a bounded reveal failsafe.
-		void attempt(0);
+		const begin = () => { if (!cancelled) void attempt(0); };
+		if (beforeReveal) void beforeReveal.then(begin, begin);
+		else begin();
 		return () => { cancelled = true; if (timer) clearTimeout(timer); };
 	}
 
@@ -121,21 +123,22 @@
 			document.getElementById('ryotunes-boot')?.remove();
 			const teardownApp = initApp(true);
 			const teardownShortcuts = initShortcuts('mini');
-			// The native side keeps the widget hidden until this mounted tree exists; it then shows
-			// the mini first and only afterwards hibernates the expensive main WebView.
-			const teardownReady = acknowledgeFrontend('mini');
-			return () => { teardownReady(); teardownShortcuts(); teardownApp(); };
+			const ryokuTokens = initRyokuLiveTokens();
+			// Paint the current Ryoku palette before exposing the widget. The native reveal failsafe
+			// remains authoritative if the local token invoke ever fails.
+			const teardownReady = acknowledgeFrontend('mini', ryokuTokens.ready);
+			return () => { teardownReady(); ryokuTokens.destroy(); teardownShortcuts(); teardownApp(); };
 		}
 		windowFocused = document.hasFocus();
 		const teardownWin = initWin();
 		const teardownApp = initApp();
 		const teardownZoom = initZoom();
 		const teardownShortcuts = initShortcuts();
-		const teardownRyokuTokens = initRyokuLiveTokens();
+		const ryokuTokens = initRyokuLiveTokens();
 		const teardownPrecisionScroll = initPrecisionScrollFallback();
-		// Cold start and tray reconstruction share one first-paint handshake. Geometry is applied while
-		// hidden; the native side reveals/focuses and only then tears down a coexisting mini player.
-		const teardownReady = acknowledgeFrontend('main');
+		// Cold start and tray reconstruction share one first-paint handshake. Geometry and the current
+		// Ryoku palette are applied while hidden; reveal cannot expose a stale/default colour frame.
+		const teardownReady = acknowledgeFrontend('main', ryokuTokens.ready);
 		// Keep the native half of Low Resource mode in sync from the first window, not only after
 		// Settings has been opened. This is one local SQLite write and never blocks first paint.
 		void api.setSetting('low_resource_mode', appearance.lowResourceMode ? 'true' : 'false').catch(() => {});
@@ -149,7 +152,7 @@
 			teardownWin();
 			teardownZoom();
 			teardownShortcuts();
-			teardownRyokuTokens();
+			ryokuTokens.destroy();
 			teardownPrecisionScroll();
 			window.removeEventListener('online', setOnline);
 			window.removeEventListener('offline', setOffline);

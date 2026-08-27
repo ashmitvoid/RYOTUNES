@@ -378,10 +378,9 @@ impl Db {
              ORDER BY x.last ASC
              LIMIT ?3",
         ) {
-            if let Ok(rows) = stmt.query_map(
-                rusqlite::params![newer_than, older_than, limit as i64],
-                |r| r.get(0),
-            ) {
+            if let Ok(rows) = stmt
+                .query_map(rusqlite::params![newer_than, older_than, limit as i64], |r| r.get(0))
+            {
                 out.extend(rows.flatten());
             }
         }
@@ -393,9 +392,9 @@ impl Db {
     pub fn play_rows(&self, since: i64) -> Vec<String> {
         let conn = self.0.lock().unwrap();
         let mut out = Vec::new();
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT song_json FROM plays WHERE played_at >= ?1 ORDER BY played_at DESC",
-        ) {
+        if let Ok(mut stmt) = conn
+            .prepare("SELECT song_json FROM plays WHERE played_at >= ?1 ORDER BY played_at DESC")
+        {
             if let Ok(rows) = stmt.query_map([since], |r| r.get(0)) {
                 out.extend(rows.flatten());
             }

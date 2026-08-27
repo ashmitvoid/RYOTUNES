@@ -1,4 +1,4 @@
--- Ryotunes v2.2.1 — Ryoku-native main-window policy.
+-- Ryotunes v2.3.1 — Ryoku-native main-window policy.
 --
 -- Ryoku Settings, Ryowalls and Ryovm are ordinary toplevel windows; Ryoku floats and sizes them
 -- with an `hl.window_rule` before map. Ryotunes follows that same compositor-owned pattern.

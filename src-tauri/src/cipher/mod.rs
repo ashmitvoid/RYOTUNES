@@ -199,8 +199,8 @@ impl CipherDeobfuscator {
     /// analyzed STS/config in Rust. The next real cipher use recreates the bridge on demand.
     pub async fn teardown_if_idle(&self, idle: Duration) {
         let mut inner = self.inner.lock().await;
-        let expired = inner.bridge.is_some()
-            && inner.last_used.is_some_and(|used| used.elapsed() >= idle);
+        let expired =
+            inner.bridge.is_some() && inner.last_used.is_some_and(|used| used.elapsed() >= idle);
         if expired {
             if let Some(bridge) = inner.bridge.take() {
                 let _ = bridge.destroy();

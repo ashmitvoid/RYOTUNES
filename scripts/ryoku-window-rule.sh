@@ -6,7 +6,7 @@ mode="${1:-install}"
 config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 hypr_dir="$config_home/hypr"
 user_lua="$hypr_dir/user.lua"
-state_home="${XDG_DATA_HOME:-$HOME/.local/share}/ryotunes-v2.2"
+state_home="${XDG_DATA_HOME:-$HOME/.local/share}/ryotunes-v2.3"
 backup_dir="$state_home/hypr-backups"
 begin='-- BEGIN RYOTUNES MANAGED WINDOW RULE'
 end='-- END RYOTUNES MANAGED WINDOW RULE'
@@ -60,6 +60,7 @@ hl.window_rule({
     name   = "float-ryotunes-custom",
     match  = { title = "^(Ryotunes)$" },
     float  = true,
+    size   = { 1760, 1000 },
     center = true,
 })
 -- END RYOTUNES MANAGED WINDOW RULE

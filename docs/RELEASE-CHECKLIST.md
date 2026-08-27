@@ -1,13 +1,13 @@
-# Ryotunes v2.2 release checklist
+# Ryotunes v2.3 release checklist
 
 ## Build/package gates
 1. Verify frozen source checksum and extract into a disposable clean tree.
 2. Install exact frontend dependencies with the frozen lockfile and run `pnpm check`.
 3. Run `cargo fmt --all -- --check`, workspace tests, locked/offline Linux graph verification, native Tauri release build and sync-server release build.
 4. Use an isolated final `CARGO_TARGET_DIR`; never package a pre-existing release binary.
-5. `makepkg` produces `ryotunes-v2.2-2.2.0-1-x86_64.pkg.tar.zst`; package content/ownership checks pass.
-6. `/usr/bin/ryotunes` resolves to `/usr/lib/ryotunes-v2.2/ryotunes`; exactly one normal Ryotunes desktop launcher is visible.
-7. `ryoku-desktop` remains installed. Removing `ryotunes-v2.2` restores the backed-up real stock Ryoku entry points.
+5. `makepkg` produces `ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst`; package content/ownership checks pass.
+6. `/usr/bin/ryotunes` resolves to `/usr/lib/ryotunes-v2.3/ryotunes`; exactly one normal Ryotunes desktop launcher is visible.
+7. `ryoku-desktop` remains installed. Removing `ryotunes-v2.3` restores the backed-up real stock Ryoku entry points.
 
 ## Window/startup
 8. A genuine cold start shows the main UI on the **first invocation** (never tray-only until a second launch) and maps directly as a centered floating Ryotunes window at about 89% × 84% of usable work area, without a tiled/fullscreen flash.
@@ -52,4 +52,4 @@
 37. Run visible idle with and without playback, Home active touchpad scrolling, Low Resource OFF vs ON and background playback. Background should contain no main user-facing WebKit process.
 38. `background-check.sh`, `pause-resume-check.sh`, `quit-check.sh` and `tray-idle-exit-check.sh` pass.
 39. Run `long-session-check.sh` for 30–60 minutes while exercising Home/Search/Artist/Album/Playlist/Library/Queue/Lyrics/Settings/mini-player. After settling, CPU and PSS should stop climbing and return near the established idle band.
-40. Record actual v2.2 field numbers; do not infer them from static/source validation.
+40. Record actual v2.3 field numbers; do not infer them from static/source validation.

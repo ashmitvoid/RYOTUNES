@@ -23,12 +23,21 @@ export const appearance = $state({
 
 let mediaQuery: MediaQueryList | null = null;
 let mediaListener: ((event: MediaQueryListEvent) => void) | null = null;
+// In Follow system mode, Ryoku's resolved Material surface is more authoritative than the generic
+// portal/media-query hint. Native theme events keep this updated without polling.
+let ryokuSystemLight: boolean | null = null;
 
 export function resolvedTheme(): 'light' | 'dark' {
 	if (appearance.themeMode === 'light' || appearance.themeMode === 'dark') return appearance.themeMode;
+	if (ryokuSystemLight !== null) return ryokuSystemLight ? 'light' : 'dark';
 	return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
 		? 'dark'
 		: 'light';
+}
+
+export function setRyokuSystemTheme(light: boolean | null): void {
+	ryokuSystemLight = light;
+	if (appearance.themeMode === 'system') applyTheme();
 }
 
 function applyTheme(): void {
@@ -60,6 +69,7 @@ export function setAppearance(patch: Partial<typeof appearance>): void {
 	} catch {
 		// A locked/quota-limited store must never make playback or settings fail.
 	}
+	if (typeof window !== 'undefined') window.dispatchEvent(new Event('ryotunes-appearance-changed'));
 }
 
 /** Restore safe, shape-checked preferences and attach the system-theme watcher once. */

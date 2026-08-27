@@ -11,8 +11,8 @@ use tauri::{Emitter, State};
 
 use crate::state::{
     is_smart_playlist_id, AppState, ON_REPEAT_ID, ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS,
-    RECENTLY_PLAYED_ID, RECENTLY_PLAYED_WINDOW_SECS, REDISCOVER_ID,
-    REDISCOVER_OLDER_THAN_SECS, SMART_PLAYLIST_LIMIT,
+    RECENTLY_PLAYED_ID, RECENTLY_PLAYED_WINDOW_SECS, REDISCOVER_ID, REDISCOVER_OLDER_THAN_SECS,
+    SMART_PLAYLIST_LIMIT,
 };
 
 type St<'a> = State<'a, Arc<AppState>>;
@@ -282,71 +282,10 @@ pub async fn get_settings(
     Ok(serde_json::Value::Object(map))
 }
 
-/// Resolve Ryoku's live UI token chain so Ryotunes retints with the shell.
-/// A named `themePalette` wins, then the wallpaper Material roles while
-/// `followWallpaper` is enabled, then the signature paper-and-ink defaults.
-/// Missing files are normal outside Ryoku and simply return the defaults.
+/// Resolve the same live Material-role chain used by Ryoku.Ui.Singletons.Tokens.
 #[tauri::command]
 pub fn ryoku_theme_tokens() -> serde_json::Value {
-    use serde_json::{json, Value};
-    use std::path::PathBuf;
-
-    fn base_dir(env_key: &str, fallback: &str) -> PathBuf {
-        if let Some(v) = std::env::var_os(env_key) {
-            return PathBuf::from(v);
-        }
-        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-        home.join(fallback)
-    }
-    fn read_json(path: PathBuf) -> Value {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(Value::Null)
-    }
-    fn usable(v: Option<&Value>) -> Option<String> {
-        v.and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned)
-    }
-
-    let config = base_dir("XDG_CONFIG_HOME", ".config").join("ryoku");
-    let cache = base_dir("XDG_CACHE_HOME", ".cache").join("ryoku");
-    let theme = read_json(config.join("theme.json"));
-    let shell = read_json(config.join("shell.json"));
-    let wall = read_json(cache.join("colors.json"));
-
-    let follow = theme.get("followWallpaper").and_then(Value::as_bool).unwrap_or(true);
-    let named = shell.get("themePalette").filter(|v| v.is_object());
-    let role = |key: &str, fallback: &str| -> String {
-        usable(named.and_then(|v| v.get(key)))
-            .or_else(|| if follow { usable(wall.get(key)) } else { None })
-            .unwrap_or_else(|| fallback.to_string())
-    };
-
-    let motion = shell.get("theme").and_then(|v| v.get("motion"));
-    let scale = motion
-        .and_then(|v| v.get("scale"))
-        .and_then(Value::as_f64)
-        .filter(|v| *v > 0.0)
-        .unwrap_or(1.0);
-    let reduce = motion
-        .and_then(|v| v.get("reduce"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    json!({
-        "paper": role("surface", "#000000"),
-        "paperLift": role("surfaceContainerLow", "#0a0a0a"),
-        "ink": role("onSurface", "#cdc4ba"),
-        "inkDim": role("onSurfaceVariant", "#b0a9a0"),
-        "inkMuted": role("outline", "#958f87"),
-        "inkFaint": role("outlineVariant", "#7a756e"),
-        "bone": role("inverseSurface", "#cdc4ba"),
-        "inkOnBone": role("inverseOnSurface", "#000000"),
-        "sun": role("primary", "#e2342a"),
-        "motionScale": scale,
-        "reduceMotion": reduce,
-        "source": if named.is_some() { "named" } else if follow && wall.is_object() { "wallpaper" } else { "signature" }
-    })
+    crate::ryoku_theme::tokens()
 }
 
 #[tauri::command]
@@ -410,7 +349,9 @@ pub async fn get_stream_clients() -> Result<Vec<String>, String> {
     let mut v = vec![innertube::MAIN_CLIENT.to_string()];
     v.extend(innertube::STREAM_FALLBACK_ORDER.iter().map(|s| s.to_string()));
     for key in innertube::UPLOAD_FALLBACK_ORDER {
-        if !v.iter().any(|s| s == key) { v.push(key.to_string()); }
+        if !v.iter().any(|s| s == key) {
+            v.push(key.to_string());
+        }
     }
     Ok(v)
 }
@@ -466,7 +407,6 @@ pub async fn login_webview(state: St<'_>) -> Result<(), String> {
 pub async fn get_playback(state: St<'_>) -> Result<serde_json::Value, String> {
     Ok(state.playback_snapshot().await)
 }
-
 
 /// Frontend-to-native first-paint handshake for cold start and hibernation reconstruction.
 #[tauri::command]
@@ -686,9 +626,11 @@ pub fn listening_stats(state: St<'_>, period: String) -> serde_json::Value {
     for json in &rows {
         let Ok(song) = serde_json::from_str::<SongItem>(json) else { continue };
         *artists.entry(song.artists.clone()).or_insert(0) += 1;
-        let entry = tracks
-            .entry(song.video_id.clone())
-            .or_insert((song.title.clone(), song.artists.clone(), 0));
+        let entry = tracks.entry(song.video_id.clone()).or_insert((
+            song.title.clone(),
+            song.artists.clone(),
+            0,
+        ));
         entry.2 += 1;
         if let Some(duration) = song.duration.as_deref().and_then(duration_secs) {
             known_duration_secs += duration;
@@ -938,12 +880,14 @@ pub fn export_playlist_file(
     let bytes = serde_json::to_vec_pretty(&transfer).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).or_else(|_| {
-        // Some filesystems do not replace an existing destination atomically. The native save
-        // dialog already asked the user about overwrite; fall back to the final path there.
-        let bytes = serde_json::to_vec_pretty(&transfer).map_err(std::io::Error::other)?;
-        std::fs::write(&path, bytes)
-    }).map_err(|e| e.to_string())
+    std::fs::rename(&tmp, &path)
+        .or_else(|_| {
+            // Some filesystems do not replace an existing destination atomically. The native save
+            // dialog already asked the user about overwrite; fall back to the final path there.
+            let bytes = serde_json::to_vec_pretty(&transfer).map_err(std::io::Error::other)?;
+            std::fs::write(&path, bytes)
+        })
+        .map_err(|e| e.to_string())
 }
 
 /// Import is deliberately a narrow parser rather than a generic file read command: renderer code

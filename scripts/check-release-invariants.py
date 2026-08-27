@@ -48,17 +48,19 @@ settings = read('ui/src/lib/components/SettingsDialog.svelte')
 zoom = read('ui/src/lib/zoom.ts')
 playerbar = read('ui/src/lib/components/PlayerBar.svelte')
 layout_css = read('ui/src/routes/layout.css')
+ryoku_live = read('ui/src/lib/ryoku-live.ts')
+ryoku_theme = read('src-tauri/src/ryoku_theme.rs')
 
-# --- frozen v2.2 identity ----------------------------------------------------
-req('version = "2.2.0"' in cargo, 'workspace version is not 2.2.0')
-req('name = "ryotunes"\nversion = "2.2.0"' in lock, 'Cargo.lock Ryotunes version not 2.2.0')
-req('name = "sync-server"\nversion = "2.2.0"' in lock, 'Cargo.lock sync-server version not 2.2.0')
+# --- frozen v2.3 identity ----------------------------------------------------
+req('version = "2.3.0"' in cargo, 'workspace version is not 2.3.0')
+req('name = "ryotunes"\nversion = "2.3.0"' in lock, 'Cargo.lock Ryotunes version not 2.3.0')
+req('name = "sync-server"\nversion = "2.3.0"' in lock, 'Cargo.lock sync-server version not 2.3.0')
 parsed = json.loads(config)
-req(parsed.get('version') == '2.2.0' and parsed.get('identifier') == 'dev.ryoku.ryotunes', 'Tauri identity incorrect')
-req(json.loads(read('ui/package.json')).get('version') == '2.2.0', 'UI version incorrect')
-req("PRODUCT_VERSION = 'v2.2'" in settings and "'2.2.0'" in settings, 'Settings version identity incorrect')
-req('pkgver=2.2.0' in read('packaging/arch/PKGBUILD'), 'Arch source pkgver incorrect')
-req('ryotunes-v2.2 2.2.0-1' in read('README.md') and 'ryotunes-v2.2 2.2.0-1' in read('RELEASE_NOTES.md'), 'public package identity missing from docs')
+req(parsed.get('version') == '2.3.0' and parsed.get('identifier') == 'dev.ryoku.ryotunes', 'Tauri identity incorrect')
+req(json.loads(read('ui/package.json')).get('version') == '2.3.0', 'UI version incorrect')
+req("PRODUCT_VERSION = 'v2.3'" in settings and "'2.3.0'" in settings, 'Settings version identity incorrect')
+req('pkgver=2.3.0' in read('packaging/arch/PKGBUILD'), 'Arch source pkgver incorrect')
+req('ryotunes-v2.3 2.3.0-1' in read('README.md') and 'ryotunes-v2.3 2.3.0-1' in read('RELEASE_NOTES.md'), 'public package identity missing from docs')
 req('name = "httpdate"' not in lock and 'name = "tauri-plugin-window-state"' not in lock, 'stale v2.0 lock entries returned')
 
 # --- audio-only / background architecture ----------------------------------
@@ -82,9 +84,9 @@ windows = parsed['app']['windows']
 w = next((x for x in windows if x.get('label','main') == 'main'), windows[0])
 req(parsed['app'].get('enableGTKAppId') is True, 'GTK/Wayland app id is not enabled')
 req(w.get('visible') is False and w.get('fullscreen') is False and w.get('center') is True, 'main surface startup flags incorrect')
-req("function acknowledgeFrontend(label: 'main' | 'mini')" in layout and 'const delays = [0, 45, 120, 260, 520, 900]' in layout, 'cold-start first-paint retry handshake missing')
+req("function acknowledgeFrontend(label: 'main' | 'mini', beforeReveal?: Promise<void>)" in layout and 'const delays = [0, 45, 120, 260, 520, 900]' in layout, 'cold-start first-paint retry handshake missing')
 req('void attempt(0);' in layout and 'requestAnimationFrame(() => void attempt(0))' not in layout, 'hidden WebView readiness is incorrectly gated by requestAnimationFrame')
-req("const teardownReady = acknowledgeFrontend('main')" in layout and "const teardownReady = acknowledgeFrontend('mini')" in layout, 'main/mini readiness handshake not shared')
+req("const teardownReady = acknowledgeFrontend('main', ryokuTokens.ready)" in layout and "const teardownReady = acknowledgeFrontend('mini', ryokuTokens.ready)" in layout, 'main/mini theme-prime/reveal handshake not shared')
 req('pub fn frontend_ready(app: &AppHandle)' in main and 'w.show().map_err' in main and 'crate::mini::close(app);' in main, 'main reveal does not close mini only after successful show')
 req('pub fn arm_reveal_failsafe(app: &AppHandle, delay: Duration)' in main and 'frontend readiness deadline expired' in main, 'native hidden-window reveal failsafe missing')
 req('arm_reveal_failsafe(app.handle(), Duration::from_millis(1500))' in lib and 'arm_reveal_failsafe(app, Duration::from_millis(220))' in main, 'cold-start/second-launch reveal recovery missing')
@@ -92,11 +94,26 @@ req('crate::tray::show_main(&app);' in commands and 'pub async fn close_mini' in
 req('RYOTUNES_APP_ID: &str = "dev.ryoku.ryotunes"' in main and 'RYOTUNES_MAIN_TITLE: &str = "Ryotunes"' in main, 'stable main window identity missing')
 req('args(["keyword", "windowrulev2"' not in main and "arg(\"windowrulev2\")" not in main, 'runtime Hyprland windowrule injection returned')
 req('hl.window_rule({' in rule and 'title = "^(Ryotunes)$"' in rule and 'float  = true' in rule and 'center = true' in rule, 'managed Ryoku floating rule missing')
-req('hl.window_rule({' in packaged_rule and 'title = "^(Ryotunes)$"' in packaged_rule and 'float  = true' in packaged_rule and 'center = true' in packaged_rule, 'packaged Ryoku rule missing')
+req('hl.window_rule({' in packaged_rule and 'title = "^(Ryotunes)$"' in packaged_rule and 'float  = true' in packaged_rule and 'size   = { 1760, 1000 }' in packaged_rule and 'center = true' in packaged_rule, 'packaged Ryoku rule missing')
 req('Ryotunes Mini' in packaged_rule, 'floating rule does not document mini exclusion')
 req('0.92' in main and '0.84' in main and 'monitor.work_area()' in main and 'unmaximize()' in main, 'adaptive 92% x 84% work-area geometry missing')
 req('setfloating' in main and 'clients", "-j"' in main, 'Hyprland defensive fallback missing')
 req('tauri_plugin_window_state' not in main and 'tauri_plugin_window_state' not in lib, 'persisted geometry can override cold-start default')
+
+# --- Ryoku live theme parity -------------------------------------------------
+req('mod ryoku_theme;' in lib and 'ryoku_theme::spawn_watcher(handle.clone())' in lib, 'native Ryoku theme watcher is not wired')
+for name in ['theme.json', 'shell.json', 'colors.json']:
+    req(name in ryoku_theme, f'Ryoku theme watcher missing {name}')
+req('inotify_init1' in ryoku_theme and 'IN_CLOSE_WRITE' in ryoku_theme and 'IN_MOVED_TO' in ryoku_theme, 'Ryoku theme watcher is not event-driven')
+req('named.and_then' in ryoku_theme and 'if follow' in ryoku_theme and '"surfaceContainerLow"' in ryoku_theme, 'Ryoku Material role precedence drifted')
+req('setInterval(' not in ryoku_live, 'Ryoku theme polling clock returned')
+req('onRyokuThemeChanged' in ryoku_live and "'ryoku-theme-changed'" in read('ui/src/lib/api.ts'), 'live Ryoku theme event bridge missing')
+for token in ['--ryo-paper', '--ryo-paper-lift', '--ryo-panel', '--ryo-card', '--ryo-sidebar-surface', '--ryo-player-surface', '--ryo-ink', '--ryo-bone']:
+    req(token in ryoku_live, f'Ryoku palette does not drive {token}')
+req('t.secondaryContainer' in ryoku_live and 't.primaryContainer' in ryoku_live and 't.tertiaryContainer' in ryoku_live, 'v2.3 accent families are not Material-role driven')
+req('v2.3 Ryoku live-palette compatibility.' in css and 'html[data-ryo-theme] .ryo-command-dialog' in css and 'html[data-ryo-theme] .ryo-search-suggest' in css, 'legacy fixed-color interaction surfaces are not theme-semantic')
+req('setRyokuSystemTheme(t.light)' in ryoku_live, 'Follow System does not follow Ryoku surface luminance')
+req("const ryokuTokens = initRyokuLiveTokens();" in layout and layout.count('initRyokuLiveTokens()') >= 2, 'main and mini do not both initialise Ryoku live tokens')
 
 # --- Home stability / Edit Home / headings ---------------------------------
 req('buildHomeRegistry' in home and 'HOME_LOCAL_SECTIONS' in home and 'homeSectionTitle' in home, 'Home registry not authoritative')
@@ -154,8 +171,8 @@ req('showMenu?: boolean;' in trackrow and 'contextMenu?: boolean;' in trackrow, 
 req('const MAX_READY_ARTWORK = 36' in art_cache and 'new Map<string, true>()' in art_cache, 'bounded artwork readiness cache missing')
 req("typeof image.decode === 'function'" in art_img and 'cancelled' in art_img and 'preview' in art_img, 'decode-before-swap/stale artwork guard missing')
 req('ArtworkImage' in now and 'ArtworkImage' in mini, 'large artwork surfaces do not share artwork pipeline')
-for token in ['--ryo-paper:#c8c4bc','--ryo-paper-lift:#d5d0c7','--ryo-panel:#beb9b0','--ryo-card:#d0cbc2','--ryo-sidebar-surface:#bbb6ad','--ryo-player-surface:#c3beb5','--ryo-ink:#211f1c']:
-    req(token in css, f'v2.2 Light token missing: {token}')
+for token in ['--ryo-paper:#d2cabd','--ryo-paper-lift:#e2d8c9','--ryo-panel:#c4baab','--ryo-card:#dbd1c3','--ryo-sidebar-surface:#bec6b8','--ryo-player-surface:#c1c7cc','--ryo-ink:#28231e','--ryo-light-sage:#9faa94','--ryo-light-blue:#9aaabc','--ryo-light-clay:#c58f73']:
+    req(token in css, f'v2.3 Light token missing: {token}')
 req('professional Light compatibility for legacy dark-only overlay chrome' in css, 'Light-theme legacy surface compatibility pass missing')
 req("'system' | 'light' | 'dark'" in theme and 'prefers-color-scheme: dark' in theme, 'Follow System/Light/Dark engine missing')
 req('@media (prefers-reduced-motion: reduce)' in css and 'data-low-resource="true"' in css, 'Reduced Motion/Low Resource global guards missing')
@@ -171,7 +188,7 @@ for key in ['search.global','search.link','search.page','playback.toggle','playb
     req(key in shortcuts, f'keybind registry lost {key}')
 req('MediaControlEvent::Play' in media and 'MediaControlEvent::Pause' in media and 'MediaControlEvent::Next' in media and 'MediaControlEvent::Previous' in media, 'system media-key/MPRIS command coverage missing')
 
-# --- v2.2 final-user field fixes -------------------------------------------
+# --- v2.3 final-user field fixes -------------------------------------------
 req('const DEFAULT = 1.1;' in zoom, 'default UI scale is not 110%')
 req("settings.ui_scale ?? '110'" in settings and 'Ctrl+0 restores 110%.' in settings, 'Settings 110% default/reset copy missing')
 req('PhysicalSize::new(1760u32, 1000u32)' in main, 'large pre-map main-window fallback missing')
@@ -179,7 +196,7 @@ req(w.get('width') == 1760 and w.get('height') == 1000, 'Tauri pre-map main-wind
 req('.ryo-wave-seek:focus-within::after' not in css, 'rectangular seek focus pseudo-element returned')
 req('.ryo-wave-seek::after { content:none !important; }' in css, 'seek focus rectangle suppression missing')
 req('ryo-playerbar-center' in playerbar and '.ryo-playerbar-center { gap:7px !important;' in css, 'bottom transport breathing room missing')
-req('.ryo-music-deck-actions {' in css and 'min-height:43px !important' in css and 'padding:8px 0 5px !important' in css, 'Home deck transport breathing room missing')
+req('.ryo-music-deck-actions {' in css and 'min-height:44px !important' in css and 'padding:7px 0 7px !important' in css, 'Home deck transport breathing room missing')
 req('.ryo-settings-register::after' in css and 'right:52px' in css and 'border-bottom:0 !important' in css, 'Settings close-button divider gap missing')
 req("if (compact) return;" in lyrics and 'const pauseMs = compact ? 1400 : 5000' in lyrics, 'compact lyrics auto-follow ownership missing')
 req('scroller.getBoundingClientRect()' in lyrics and 'line.getBoundingClientRect()' in lyrics, 'compact lyrics robust active-line centering missing')
@@ -188,10 +205,10 @@ req('grid-template-columns:232px minmax(0,1fr)' in mini and 'gap:7px' in mini an
 req('--background: oklch(0.80 0.008 80)' in layout_css and '--card: oklch(0.83 0.009 80)' in layout_css, 'pre-theme light surfaces can still flash pure white')
 
 # --- diagnostics / package integration -------------------------------------
-req("local expected='/usr/lib/ryotunes-v2.2/ryotunes'" in diag, 'diagnostics expected binary path incorrect')
+req("local expected='/usr/lib/ryotunes-v2.3/ryotunes'" in diag, 'diagnostics expected binary path incorrect')
 req('for p in /proc/[0-9]*' in diag and 'readlink -f "$p/exe"' in diag, 'diagnostics do not identify process through /proc/<pid>/exe')
 req('/home/' not in diag and '/Users/' not in diag, 'diagnostics contain private user paths')
-req('state_home="${XDG_DATA_HOME:-$HOME/.local/share}/ryotunes-v2.2"' in rule, 'Ryoku rule state path is not versioned for v2.2')
+req('state_home="${XDG_DATA_HOME:-$HOME/.local/share}/ryotunes-v2.3"' in rule, 'Ryoku rule state path is not versioned for v2.3')
 
 # Frontend settings whitelist stays synchronized with Rust command boundary.
 ui_block = commands.split('const UI_SETTINGS:',1)[1].split('];',1)[0]
@@ -202,4 +219,4 @@ for p in (root/'ui/src').rglob('*'):
         written.update(re.findall(r"api\.setSetting\('([^']+)'", p.read_text()))
 req(written <= allowed, f'frontend writes unwhitelisted settings: {sorted(written-allowed)}')
 
-print('Release invariants v2.2: OK')
+print('Release invariants v2.3: OK')

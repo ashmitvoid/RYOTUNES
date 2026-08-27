@@ -36,8 +36,8 @@
 	const metaFor = (id: TabId) => TAB_META[id];
 	const activeMeta = $derived(metaFor(tab));
 	const activeLabel = $derived(TABS.find((t) => t.id === tab)?.label ?? 'General');
-	const PRODUCT_VERSION = 'v2.2';
-	let buildVersion = $state('2.2.0');
+	const PRODUCT_VERSION = 'v2.3';
+	let buildVersion = $state('2.3.0');
 	getVersion().then((v) => (buildVersion = v)).catch(() => {});
 	let settings = $state<Record<string, string>>({});
 	let clients = $state<string[]>([]);

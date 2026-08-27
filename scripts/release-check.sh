@@ -7,9 +7,9 @@ fail=0
 say() { printf '[%s] %s\n' "$1" "$2"; }
 
 say check 'release identity'
-grep -q 'version = "2.2.0"' Cargo.toml || { say FAIL 'workspace version is not 2.2.0'; fail=1; }
-grep -q '"version": "2.2.0"' src-tauri/tauri.conf.json || { say FAIL 'Tauri version is not 2.2.0'; fail=1; }
-grep -q '"version": "2.2.0"' ui/package.json || { say FAIL 'UI version is not 2.2.0'; fail=1; }
+grep -q 'version = "2.3.0"' Cargo.toml || { say FAIL 'workspace version is not 2.3.0'; fail=1; }
+grep -q '"version": "2.3.0"' src-tauri/tauri.conf.json || { say FAIL 'Tauri version is not 2.3.0'; fail=1; }
+grep -q '"version": "2.3.0"' ui/package.json || { say FAIL 'UI version is not 2.3.0'; fail=1; }
 grep -q '"identifier": "dev.ryoku.ryotunes"' src-tauri/tauri.conf.json || { say FAIL 'unexpected application identifier'; fail=1; }
 
 say check 'private-machine and secret patterns'

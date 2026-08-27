@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.3 — 2026-08-27
+
+- Fixed Ryoku/Hyprland cold-launch geometry by adding compositor-owned `size = { 1760, 1000 }` to the exact-title managed window rule.
+- Polished the Home listening-console controls so Play/Pause and Queue have a balanced gap above the lower divider.
+- Expanded Light mode into a richer parchment/sage/blue-grey/clay/gold palette with clearer surface separation and no new continuous visual effects.\n- Added event-driven Ryoku theme parity: Follow System now mirrors the same named/wallpaper Material roles as Ryoku.Ui Tokens, updates main + mini immediately through inotify/Tauri events, and primes the palette before window reveal.
+- Preserved v2.2 audio-only native playback, background WebKit hibernation, MPRIS/tray lifecycle, stable Home DOM, mini-player behavior and event-driven performance architecture.
+
+
 
 ### FINAL R3 visibility hotfix
 - Fixed a Linux hidden-window deadlock where the main WebView started with `visible:false` but its reveal handshake was queued behind `requestAnimationFrame`; WebKitGTK can suspend rAF for hidden toplevels, leaving Ryotunes running only in the tray even after repeated launches.

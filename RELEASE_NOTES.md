@@ -1,39 +1,48 @@
-# Ryotunes v2.2 — final Ryoku-shell release candidate
+# Ryotunes v2.3 — Ryoku polish release
 
-v2.2 is built for end users rather than a tester workflow. It consolidates the v2.1 field fixes and the final visual/interaction feedback into one cleaned release candidate while preserving the native playback/background architecture that made v1.6+ efficient on Ryoku.
+v2.3 folds the first post-v2.2 field fixes into one testable release line. It keeps the audio-only native playback, WebKit hibernation, MPRIS, tray lifecycle and stable Home architecture from v2.2 while fixing the startup geometry and polishing the two most visible UI rough edges reported after release.
 
-## Final field fixes
+## Fixed in v2.3
 
-### Main window and interface density
-- Increased the hidden pre-map fallback to 1760×1000 logical pixels and the adaptive mapped target to roughly 92% × 84% of the active monitor work area. This avoids the old 1440×840 fallback that could become the visible default on Wayland before monitor mapping completed.
-- The main surface remains floating, centered, non-maximized by default, while manual maximize remains available during the session.
-- Changed the default UI scale from 120% to 110%. Fresh/untouched installs use 110%; explicitly persisted custom scales remain respected; Ctrl+0 resets to 110%.
+### Native Ryoku theme parity
+- Follow System now resolves the same Material-role chain as Ryoku's shared `Tokens.qml`: named `shell.json themePalette` first, wallpaper `colors.json` while enabled, then signature defaults.
+- Main window and mini-player both retint immediately when Ryoku Settings changes a named palette or wallpaper-derived scheme.
+- Linux uses an event-driven inotify watcher on Ryoku's config/cache directories; the old 60-second frontend polling clock is gone, so there is no theme delay and no new idle WebKit wakeup loop.
+- The current palette is applied while the WebView is still hidden, before the frontend-ready reveal handshake, preventing a stale/default-colour flash at launch or reconstruction.
+- The richer v2.3 Light surfaces now take their sage/blue/clay accent families from Ryoku's primary/secondary/tertiary Material roles instead of fixed colours, avoiding palette colour defects.
 
-### Mini-player
-- Increased the widget canvas slightly and rebalanced artwork/content proportions.
-- Replaced compressed text tabs with an icon-led Now Playing / Lyrics / Queue switcher with larger hit areas and deliberate spacing.
-- Compact lyrics no longer inherit remembered full-panel manual scroll positions. Active-line centering uses viewport geometry, compact manual-scroll suppression is shorter, and top/bottom reading-zone padding keeps the current lyric visible instead of clipping it at the top.
-- Kept the mini-player action-menu suppression and the v2.1 R3 full-app restore lifecycle fix.
+### Ryoku / Hyprland startup geometry
+- The managed Ryoku window rule now owns the full startup policy: float, **1760×1000**, and center.
+- This fixes the small-window launch seen when Tauri's post-map resize request lost to compositor policy.
+- The title match remains exact, so the separate `Ryotunes Mini` window is not affected.
 
-### Visual polish
-- Reworked Light/Follow-System-Light into a lower-glare warm-stone palette with clearer hierarchy between canvas, sidebar, cards, panels and player surfaces.
-- Removed the rectangular seek focus box that WebKit showed after pointer forward/rewind. Keyboard focus uses the seek rail itself rather than an outer rectangle.
-- Increased breathing room between transport controls and seek/divider lines in the bottom player and Home listening console.
-- Settings/header divider lines now stop before the close-button zone so the close control reads as a clean isolated action.
-- Warm pre-theme base tokens prevent a bright pure-white flash while the semantic theme is being applied.
+### Home playback console spacing
+- Added balanced vertical breathing room around Previous / Play-Pause / Next / Queue controls.
+- The controls no longer visually touch the divider beneath them.
+- The existing card dimensions are retained by tightening nearby metadata spacing rather than simply enlarging the hero.
 
-## Preserved release gates
+### Light theme
+- Reworked Light mode from a mostly beige/white plane into a restrained multi-family palette.
+- Main content remains warm parchment.
+- Sidebar/navigation gains muted sage.
+- Titlebar/playerbar gains blue-grey separation.
+- Primary playback actions use a muted clay/terracotta accent.
+- Toolbars and section furniture use restrained gold/sage/blue/clay detail.
+- Queue/detail surfaces get a cooler paper tint so the lanes are easier to distinguish.
+- The additional colour is static: no animated gradients or new compositor-heavy effects were added.
 
-- Audio-only frontend/backend contract.
-- Linux user-facing WebKit hibernation while native playback continues.
-- Five-minute tray-only idle exit and explicit Quit/MPRIS/native playback teardown.
-- Stable Home DOM with session cache and no mount/unmount virtualization.
-- Bounded Search continuation, deduplication, state preservation and contained nested scrolling.
-- Shared right-click / two-finger / Shift+F10 / Menu-key context actions.
-- Bounded decode-before-swap large-artwork cache.
-- Reduced Motion and Low Resource guards.
-- Cold-start and reconstructed-window ready handshake with native recovery deadlines.
+## Preserved release behavior
+- Audio-only playback through native libmpv.
+- Event-driven playback state with no permanent high-frequency frontend clock.
+- Linux main-WebKit hibernation during background playback.
+- MPRIS, hardware media keys and Ryoku shell controls during background playback.
+- Five-minute tray-only idle exit when nothing is playing.
+- Explicit Quit teardown for playback, MPRIS and integrations.
+- Stable Home DOM; physical Home virtualization remains disabled.
+- Mini-player, lyrics, queue and release-performance safeguards from v2.2.
 
 ## Packaging
 
-The public package is **`ryotunes-v2.2 2.2.0-1`**. The managed installer migrates v2.1/v2.0/v1.9 and older custom generations, preserves the true stock Ryoku rollback copy, never removes `ryoku-desktop`, installs the real binary at `/usr/lib/ryotunes-v2.2/ryotunes`, exposes one normal `/usr/bin/ryotunes` and desktop launcher, installs the user-scoped Ryoku floating rule and fails closed if ownership/routes do not validate.
+The v2.3 replacement package identity is **`ryotunes-v2.3 2.3.0-1`**.
+
+It keeps `ryoku-desktop` installed, preserves the genuine stock Ryotunes entry points for rollback, installs the custom binary under `/usr/lib/ryotunes-v2.3/ryotunes`, exposes one normal `/usr/bin/ryotunes` route and desktop launcher, and installs the managed Ryoku window rule.

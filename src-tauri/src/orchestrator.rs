@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use innertube::{
-    find_format, rustypipe_fallback, AudioQuality, Clients, Format, InnerTube,
-    PlayerResponse, MAIN_CLIENT, STREAM_FALLBACK_ORDER, UPLOAD_FALLBACK_ORDER,
+    find_format, rustypipe_fallback, AudioQuality, Clients, Format, InnerTube, PlayerResponse,
+    MAIN_CLIENT, STREAM_FALLBACK_ORDER, UPLOAD_FALLBACK_ORDER,
 };
 use tokio::sync::Mutex;
 
@@ -121,7 +121,8 @@ impl Orchestrator {
         let prefer_high = matches!(quality, AudioQuality::High | AudioQuality::Auto);
         let logged_in = self.it.is_logged_in();
         let visitor = self.it.visitor_data();
-        let order: &[&str] = if is_upload { &UPLOAD_FALLBACK_ORDER } else { &STREAM_FALLBACK_ORDER };
+        let order: &[&str] =
+            if is_upload { &UPLOAD_FALLBACK_ORDER } else { &STREAM_FALLBACK_ORDER };
         let playlist_id = is_upload.then_some("MLPT");
 
         // 1. Signature timestamp from the deciphering player.js (cipher runtime).
@@ -244,7 +245,8 @@ impl Orchestrator {
             if prefer_high && !is_high(format) && has_high {
                 if better(format, best.as_ref().map(|c| &c.format)) {
                     let ping = main_ping.clone().or_else(|| playback_ping(&resp, &key));
-                    best = Some(Candidate { format: format.clone(), url, expires, client: key, ping });
+                    best =
+                        Some(Candidate { format: format.clone(), url, expires, client: key, ping });
                 }
                 continue;
             }

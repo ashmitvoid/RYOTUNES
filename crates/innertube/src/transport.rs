@@ -83,12 +83,8 @@ impl InnerTube {
         if let Some(p) = proxy {
             builder = builder.proxy(reqwest::Proxy::all(p)?);
         }
-        Ok(InnerTube {
-            http: builder.build()?,
-            session: Arc::new(RwLock::new(session)),
-        })
+        Ok(InnerTube { http: builder.build()?, session: Arc::new(RwLock::new(session)) })
     }
-
 
     // --- session accessors (authentication flow) -----------------------------------------------------
 

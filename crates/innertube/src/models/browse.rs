@@ -13,9 +13,8 @@ use serde_json::Value;
 use super::metadata::{
     artist_runs, artists_from_runs, duration_from_runs, find_all, find_all_shallow, find_first_str,
     first_artist_id, flex_column_text, flex_runs, is_explicit, is_upload_endpoint, is_upload_row,
-    is_video_endpoint, is_video_row, last_thumbnail, list_item_video_id, parse_list_item, play_count,
-    runs_text, runs_text_opt,
-    ArtistRun, SongItem,
+    is_video_endpoint, is_video_row, last_thumbnail, list_item_video_id, parse_list_item,
+    play_count, runs_text, runs_text_opt, ArtistRun, SongItem,
 };
 
 /// One clickable card in a home carousel or library grid. Flat + `kind`-tagged so the UI can
@@ -1905,7 +1904,8 @@ mod tests {
                 "musicResponsiveHeaderRenderer": { "facepile": facepile }
             }] } } })
         };
-        let owner_only = json!({ "avatarStackViewModel": { "avatars": [{ "avatarViewModel": {} }] } });
+        let owner_only =
+            json!({ "avatarStackViewModel": { "avatars": [{ "avatarViewModel": {} }] } });
         let collab = json!({ "avatarStackViewModel": { "rendererContext": { "commandContext": {
             "onTap": { "innertubeCommand": { "showEngagementPanelEndpoint": {
                 "identifier": { "tag": "PAplaylist_collaborate" }
