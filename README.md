@@ -1,90 +1,190 @@
 <div align="center">
-  <img src="src-tauri/icons/128x128.png" width="96" alt="Ryotunes icon" />
 
-# Ryotunes
+<img src="docs/assets/ryotunes-hero.svg" alt="Ryotunes — Music, shaped for Ryoku" width="100%" />
 
-**Music, shaped for the Ryoku desktop.**
+<br />
 
-A Linux-first desktop music player built around native audio playback, a quiet background footprint, and a UI designed to belong on Ryoku rather than sit on top of it.
+<a href="https://github.com/ashmitvoid/ryotunes/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ashmitvoid/ryotunes?style=flat-square&label=release&color=9a604b"></a>
+<a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/github/license/ashmitvoid/ryotunes?style=flat-square&color=7f9b8d"></a>
+<img alt="Linux x86_64" src="https://img.shields.io/badge/Linux-x86__64-8996a8?style=flat-square&logo=linux&logoColor=white">
+<img alt="Ryoku native" src="https://img.shields.io/badge/Ryoku-native-6f7f76?style=flat-square">
+<img alt="Audio only" src="https://img.shields.io/badge/playback-audio%20only-a86d58?style=flat-square">
+<br />
+<img alt="Rust" src="https://img.shields.io/badge/Rust-native%20core-2d3136?style=flat-square&logo=rust&logoColor=white">
+<img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-2d3136?style=flat-square&logo=tauri&logoColor=white">
+<img alt="Svelte 5" src="https://img.shields.io/badge/Svelte-5-2d3136?style=flat-square&logo=svelte&logoColor=white">
+<img alt="libmpv" src="https://img.shields.io/badge/audio-libmpv-2d3136?style=flat-square">
 
-`Ryoku / CachyOS / Arch` · `Tauri 2` · `Rust` · `Svelte 5` · `libmpv`
+<br /><br />
+
+**A Ryoku-native desktop music player with native audio playback, live shell theming, and a UI that knows when to disappear.**
+
+[Download](https://github.com/ashmitvoid/ryotunes/releases/latest) · [Architecture](docs/ARCHITECTURE.md) · [Install](docs/INSTALL-ARCH.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Ryoku](https://github.com/neur0map/ryoku-arch)
 
 </div>
 
+<br />
+
+<img src="docs/assets/ryotunes-surface.svg" alt="Illustrated Ryotunes v2.3 Home surface" width="100%" />
+
+<p align="center"><sub>Repository artwork based on the live v2.3 Home layout and Ryoku visual language.</sub></p>
+
 ---
 
-Ryotunes is deliberately audio-only. The Rust backend owns playback through libmpv while the Svelte interface handles discovery, library work, lyrics, queue management and the rest of the desktop experience. Closing the main window during playback can hibernate the expensive user-facing WebKit renderer without stopping the song, MPRIS controls, tray controls or Ryoku's media surface.
+## Built for Ryoku, not merely compatible with it
 
-That split is the centre of the project: the player should feel rich when it is on screen and get out of the way when it is not.
+Ryotunes is a Linux-first desktop music application shaped around the way **Ryoku + Hyprland** actually behave.
 
-## What it does
+The visible interface is Svelte/WebKitGTK. Playback is not. Rust and libmpv own the audio session, desktop integration, lifecycle, and media state. That separation lets Ryotunes stay visually rich while open and become dramatically quieter when the main interface is no longer needed.
 
-**Listening**
-- Search and browse songs, albums, artists and playlists.
-- Queue management, radio/continuation and gapless native playback.
-- Synced lyrics with compact mini-player follow mode.
-- Local music alongside online playback.
-- Like, library and playlist actions.
+<table>
+<tr>
+<td width="33%" valign="top">
 
-**Desktop**
-- MPRIS and hardware media-key integration.
-- System tray with background playback and explicit Quit semantics.
-- Ryoku/Hyprland-aware floating window behaviour.\n- Live Ryoku theme parity: named palettes and wallpaper palettes retint the main window and mini-player immediately in Follow System mode.
-- Compact Now Playing / Lyrics / Queue mini-player.
-- Discord Rich Presence, Last.fm and optional Listen Together support.
-- Dark, light and system themes, reduced-motion and low-resource modes.
+### Native where it matters
+Audio stays in **libmpv**, outside the frontend renderer. MPRIS, media keys, tray controls, gapless playback and the active session remain native.
 
-**Performance**
-- Native mpv playback rather than audio in the UI renderer.
-- Event-driven playback state instead of a permanent high-frequency frontend clock.
-- Main WebKit hibernation while playing in the background.
-- Stable Home DOM with bounded progressive loading rather than physical section virtualization.
-- Session caches and bounded artwork decode/cache paths.
-- Tray-only idle exit when nothing is playing.
+</td>
+<td width="33%" valign="top">
+
+### Ryoku in real time
+**Follow System** consumes Ryoku's live Material-role palette. Named themes and wallpaper-derived colours retint both the main window and mini-player immediately.
+
+</td>
+<td width="33%" valign="top">
+
+### Quiet in the background
+During background playback, the expensive visible WebKit surface can be **destroyed / hibernated** while the native playback session continues.
+
+</td>
+</tr>
+</table>
+
+> [!NOTE]
+> Ryotunes is intentionally **audio-only**. It does not provide music-video playback.
+
+---
+
+## The experience
+
+| Surface | What Ryotunes does |
+|---|---|
+| **Home** | Stable, non-virtualized sections, listening console, recommendations and progressive loading without scroll-jitter regressions |
+| **Search** | Songs, albums, artists and playlists with bounded incremental loading and preserved navigation state |
+| **Library** | Liked music, playlists and local music in the same desktop flow |
+| **Now Playing** | Artwork-first playback surface with queue, metadata and lyrics access |
+| **Lyrics** | Synced lyrics with click-to-seek and mini-player follow mode |
+| **Queue** | Manual queue control plus radio / continuation behaviour |
+| **Mini-player** | A separate compact Ryoku surface with its own exact Hyprland title and independent geometry |
+| **Integrations** | MPRIS, hardware media keys, tray, Last.fm, Discord Rich Presence and optional Listen Together |
+
+---
+
+## Ryoku integration
+
+Ryotunes does not implement a disconnected theme layer and then approximate Ryoku on top of it. The Linux build integrates with the shell directly.
+
+- **Live palette bridge** — Rust resolves Ryoku Material roles and watches Ryoku theme sources with inotify.
+- **Immediate theme updates** — no 60-second frontend palette polling loop.
+- **Compositor-owned startup geometry** — the main surface is floated, sized and centred by the Ryoku/Hyprland rule before it becomes visible.
+- **Mini-player isolation** — the main rule matches the exact title `^(Ryotunes)$`; `Ryotunes Mini` remains independent.
+- **MPRIS continuity** — Ryoku media controls remain available when the visible main UI is closed.
+- **Rollback-safe replacement packaging** — custom Ryotunes replaces only the stock Ryotunes entry points, never `ryoku-desktop`.
+
+For the shell itself:
+
+**[Ryoku Arch](https://github.com/neur0map/ryoku-arch)** · **[Ryoku Discord](https://discord.gg/8KjBmUEyKA)**
+
+---
+
+## A small lifecycle contract with a big payoff
+
+| Situation | Behaviour |
+|---|---|
+| Main window open | Full Svelte/WebKit UI is active |
+| Close while music is playing | Main WebKit can hibernate; native playback + MPRIS + tray remain alive |
+| Tray-only, nothing playing | Application exits after the bounded 5-minute idle period |
+| Reopen | Main WebView is reconstructed and resynchronized from native state |
+| Explicit **Quit** | Playback stops, MPRIS unregisters, media state clears and backend integrations shut down |
+
+This is why the UI is a **client of playback state**, not the transport clock that owns it.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    R["Ryoku / Hyprland"] --> M["MPRIS · media keys · tray"]
+    R --> T["live palette + window policy"]
+
+    M --> N["Tauri / Rust host"]
+    T --> N
+
+    N --> P["native player crate"]
+    P --> MPV["libmpv · audio only"]
+
+    N --> I["Innertube · library · integrations"]
+    N --> W["Svelte 5 / WebKitGTK"]
+
+    W --> U["Home · Search · Library"]
+    W --> Q["Queue · Lyrics · Now Playing"]
+    W --> MINI["Ryotunes Mini"]
+
+    W -. "hibernate while background playback continues" .-> N
+```
+
+More detail: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+
+---
+
+## Performance is part of the product
+
+Ryotunes treats background efficiency as an architectural requirement, not a cleanup pass.
+
+- event-driven playback state instead of a permanent 100 ms global frontend transport timer;
+- no always-on FFT / requestAnimationFrame loop for ordinary idle playback;
+- main WebKit hibernation during background playback;
+- stable Home DOM — physical Home virtualization is deliberately avoided;
+- bounded artwork decode/cache paths;
+- native playback state remains authoritative across close, tray, mini-player and reopen transitions.
+
+The design rules behind the interface are documented in **[docs/DESIGN.md](docs/DESIGN.md)**.
+
+---
 
 ## Install
 
 Ryotunes v2.3 targets **x86_64 Ryoku, CachyOS and Arch-based systems**.
 
-The v2.3 replacement package identity is **`ryotunes-v2.3 2.3.0-1`**.
+The normal user path is a **prebuilt package**. End users do not need Node, pnpm, Rust, Cargo or a local Tauri build.
 
-The normal user release is **precompiled**. Installing Ryotunes does not require Node, pnpm, Rust, Cargo or a local Tauri build.
-
-Download `ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst` from the [v2.3.0 release](https://github.com/ashmitvoid/RYOTUNES/releases/tag/v2.3.0), then install it with:
+1. Open **[GitHub Releases](https://github.com/ashmitvoid/ryotunes/releases/latest)**.
+2. Download `ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst`.
+3. Install:
 
 ```bash
 sudo pacman -U ./ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst
 ```
 
-A binary AUR recipe is maintained in [`aur/`](aur/) and is intended to make the user path simply:
+The active route is:
 
-```bash
-paru -S ryotunes-bin
+```text
+/usr/bin/ryotunes
+  -> /usr/lib/ryotunes-v2.3/ryotunes
 ```
 
-For source builds and development setup, see [`docs/INSTALL-ARCH.md`](docs/INSTALL-ARCH.md).
+The replacement package preserves genuine stock Ryotunes entry points for rollback and restores them when the custom package is removed.
 
-## A Ryoku-first application
+> [!TIP]
+> An AUR `-bin` recipe lives in [`aur/`](aur/). Public AUR publication is pending; the repository does not pretend the package is available there before it actually is.
 
-Ryotunes does not treat Ryoku as a skin. The Linux build has explicit integration for the shell and compositor:
+Source/development setup: **[docs/INSTALL-ARCH.md](docs/INSTALL-ARCH.md)**
 
-- stable application identity: `dev.ryoku.ryotunes`
-- Ryoku-style floating/centred main-window policy
-- MPRIS state that remains available after the main UI is closed
-- shell media controls that keep working during WebKit hibernation
-- close-to-tray separated from explicit Quit
-- rollback-safe packaging that does not remove `ryoku-desktop`
+---
 
-The details are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-### Ryoku ecosystem
-
-Ryotunes is designed alongside the Ryoku desktop stack. For the shell itself, installation work, compositor configuration and the wider project:
-
-- [Ryoku Arch on GitHub](https://github.com/neur0map/ryoku-arch)
-- [Join the Ryoku Discord](https://discord.gg/8KjBmUEyKA)
-
-## Repository map
+<details>
+<summary><b>Repository map</b></summary>
 
 ```text
 crates/
@@ -92,16 +192,22 @@ crates/
   player/             native playback core
   listen-protocol/    shared Listen Together protocol
   sync-server/        optional room relay
-src-tauri/             desktop host, lifecycle, MPRIS, tray and integrations
-ui/                    SvelteKit interface
-packaging/             Linux / Arch / Ryoku packaging
-scripts/               diagnostics and release gates
-docs/                  install, architecture, troubleshooting and release notes
+
+src-tauri/             Tauri host, lifecycle, MPRIS, tray, integrations
+ui/                    SvelteKit / Svelte 5 interface
+integrations/          Ryoku / shell integration assets
+packaging/             Arch / Ryoku replacement packaging
+scripts/               diagnostics, release gates and packaging tools
+docs/                  architecture, install, design and troubleshooting
+aur/                   binary AUR recipe sources
 ```
 
-## Development
+</details>
 
-The project uses locked frontend and Rust dependency graphs. A release is expected to pass both the repository preflight and native compiler gates.
+<details>
+<summary><b>Development & validation</b></summary>
+
+The dependency graphs are locked. Release work is expected to pass both frontend and native gates.
 
 ```bash
 cd ui
@@ -116,16 +222,52 @@ cargo check --workspace --locked
 cargo tauri build --no-bundle
 ```
 
-The release checklist is in [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md).
+Release checklist: **[docs/RELEASE-CHECKLIST.md](docs/RELEASE-CHECKLIST.md)**
 
-## Troubleshooting
+</details>
 
-Start with [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md). For a bug report, include the distro, Ryoku/Hyprland version, display server, GPU setup, and the output of the bundled diagnostics script where relevant.
+<details>
+<summary><b>Troubleshooting</b></summary>
 
-## Upstream and license
+Start with **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**.
 
-Ryotunes is a GPL-3.0-or-later modified work derived from [SimoHypers/LiMusic](https://github.com/SimoHypers/limusic). Ryotunes has its own Ryoku-focused product direction, interface and lifecycle/performance work while retaining and adapting parts of the original Rust/Tauri/YouTube Music stack.
+For a useful bug report, include:
 
-The detailed upstream note is in [`UPSTREAM.md`](UPSTREAM.md). The project is distributed under the terms in [`LICENSE`](LICENSE).
+- Ryoku / Hyprland version
+- distro and kernel
+- Wayland/display-server context
+- GPU setup
+- steps to reproduce
+- bundled diagnostics output when relevant
 
-Ryotunes is an independent project and is not affiliated with or endorsed by YouTube or Google. YouTube and YouTube Music are trademarks of Google LLC.
+</details>
+
+---
+
+## Contributing
+
+Contributions are welcome when they preserve the product contracts that make Ryotunes feel native on Ryoku.
+
+Start with **[CONTRIBUTING.md](CONTRIBUTING.md)**. Changes touching playback lifecycle, theme integration, Home rendering, background behaviour or replacement packaging deserve explicit regression testing.
+
+---
+
+## Upstream, license & independence
+
+Ryotunes is a **GPL-3.0-or-later modified work derived from [SimoHypers/LiMusic](https://github.com/SimoHypers/limusic)**.
+
+The project retains transparent upstream attribution while pursuing its own Ryoku-specific product direction, interface, lifecycle, performance architecture and packaging model. See **[UPSTREAM.md](UPSTREAM.md)** for the detailed note.
+
+Ryotunes is independently developed and is **not affiliated with, authorized by, sponsored by, or endorsed by YouTube or Google**. YouTube and YouTube Music are trademarks of Google LLC.
+
+Distributed under **[GPL-3.0-or-later](LICENSE)**.
+
+---
+
+<div align="center">
+
+### Music, shaped for the Ryoku desktop.
+
+<sub>Rust · Tauri 2 · Svelte 5 · WebKitGTK · libmpv · Hyprland</sub>
+
+</div>
