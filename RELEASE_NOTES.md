@@ -4,6 +4,13 @@ v2.3 folds the first post-v2.2 field fixes into one testable release line. It ke
 
 ## Fixed in v2.3
 
+### Native Ryoku theme parity
+- Follow System now resolves the same Material-role chain as Ryoku's shared `Tokens.qml`: named `shell.json themePalette` first, wallpaper `colors.json` while enabled, then signature defaults.
+- Main window and mini-player both retint immediately when Ryoku Settings changes a named palette or wallpaper-derived scheme.
+- Linux uses an event-driven inotify watcher on Ryoku's config/cache directories; the old 60-second frontend polling clock is gone, so there is no theme delay and no new idle WebKit wakeup loop.
+- The current palette is applied while the WebView is still hidden, before the frontend-ready reveal handshake, preventing a stale/default-colour flash at launch or reconstruction.
+- The richer v2.3 Light surfaces now take their sage/blue/clay accent families from Ryoku's primary/secondary/tertiary Material roles instead of fixed colours, avoiding palette colour defects.
+
 ### Ryoku / Hyprland startup geometry
 - The managed Ryoku window rule now owns the full startup policy: float, **1760×1000**, and center.
 - This fixes the small-window launch seen when Tauri's post-map resize request lost to compositor policy.
