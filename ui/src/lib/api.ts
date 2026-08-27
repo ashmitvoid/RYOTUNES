@@ -563,20 +563,39 @@ export const onLoginDone = (cb: () => void): Promise<UnlistenFn> =>
 
 // --- Ryoku live design tokens ---------------------------------------------------------------
 export interface RyokuThemeTokens {
+	detected: boolean;
 	paper: string;
 	paperLift: string;
+	panel: string;
+	card: string;
+	sidebar: string;
+	player: string;
 	ink: string;
 	inkDim: string;
-	inkMuted: string;
-	inkFaint: string;
 	bone: string;
 	inkOnBone: string;
-	sun: string;
+	primary: string;
+	onPrimary: string;
+	primaryContainer: string;
+	onPrimaryContainer: string;
+	secondary: string;
+	onSecondary: string;
+	secondaryContainer: string;
+	onSecondaryContainer: string;
+	tertiary: string;
+	onTertiary: string;
+	tertiaryContainer: string;
+	onTertiaryContainer: string;
+	outline: string;
+	outlineVariant: string;
+	light: boolean;
 	motionScale: number;
 	reduceMotion: boolean;
 	source: 'named' | 'wallpaper' | 'signature';
 }
 export const ryokuThemeTokens = () => invoke<RyokuThemeTokens>('ryoku_theme_tokens');
+export const onRyokuThemeChanged = (cb: (tokens: RyokuThemeTokens) => void): Promise<UnlistenFn> =>
+	listen<RyokuThemeTokens>('ryoku-theme-changed', (e) => cb(e.payload));
 
 // --- lyrics ---------------------------------------------------------------------------------
 export interface LyricWord {
