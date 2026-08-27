@@ -47,7 +47,7 @@ browse = read('crates/innertube/src/models/browse.rs')
 settings = read('ui/src/lib/components/SettingsDialog.svelte')
 zoom = read('ui/src/lib/zoom.ts')
 playerbar = read('ui/src/lib/components/PlayerBar.svelte')
-layout_css = read('ui/src/routes/layout.css')
+layout_css = read('ui/src/routes/layout.css')\nryoku_live = read('ui/src/lib/ryoku-live.ts')\nryoku_theme = read('src-tauri/src/ryoku_theme.rs')
 
 # --- frozen v2.3 identity ----------------------------------------------------
 req('version = "2.3.0"' in cargo, 'workspace version is not 2.3.0')
@@ -82,9 +82,9 @@ windows = parsed['app']['windows']
 w = next((x for x in windows if x.get('label','main') == 'main'), windows[0])
 req(parsed['app'].get('enableGTKAppId') is True, 'GTK/Wayland app id is not enabled')
 req(w.get('visible') is False and w.get('fullscreen') is False and w.get('center') is True, 'main surface startup flags incorrect')
-req("function acknowledgeFrontend(label: 'main' | 'mini')" in layout and 'const delays = [0, 45, 120, 260, 520, 900]' in layout, 'cold-start first-paint retry handshake missing')
+req("function acknowledgeFrontend(label: 'main' | 'mini', beforeReveal?: Promise<void>)" in layout and 'const delays = [0, 45, 120, 260, 520, 900]' in layout, 'cold-start first-paint retry handshake missing')
 req('void attempt(0);' in layout and 'requestAnimationFrame(() => void attempt(0))' not in layout, 'hidden WebView readiness is incorrectly gated by requestAnimationFrame')
-req("const teardownReady = acknowledgeFrontend('main')" in layout and "const teardownReady = acknowledgeFrontend('mini')" in layout, 'main/mini readiness handshake not shared')
+req("const teardownReady = acknowledgeFrontend('main', ryokuTokens.ready)" in layout and "const teardownReady = acknowledgeFrontend('mini', ryokuTokens.ready)" in layout, 'main/mini theme-prime/reveal handshake not shared')
 req('pub fn frontend_ready(app: &AppHandle)' in main and 'w.show().map_err' in main and 'crate::mini::close(app);' in main, 'main reveal does not close mini only after successful show')
 req('pub fn arm_reveal_failsafe(app: &AppHandle, delay: Duration)' in main and 'frontend readiness deadline expired' in main, 'native hidden-window reveal failsafe missing')
 req('arm_reveal_failsafe(app.handle(), Duration::from_millis(1500))' in lib and 'arm_reveal_failsafe(app, Duration::from_millis(220))' in main, 'cold-start/second-launch reveal recovery missing')
@@ -97,6 +97,20 @@ req('Ryotunes Mini' in packaged_rule, 'floating rule does not document mini excl
 req('0.92' in main and '0.84' in main and 'monitor.work_area()' in main and 'unmaximize()' in main, 'adaptive 92% x 84% work-area geometry missing')
 req('setfloating' in main and 'clients", "-j"' in main, 'Hyprland defensive fallback missing')
 req('tauri_plugin_window_state' not in main and 'tauri_plugin_window_state' not in lib, 'persisted geometry can override cold-start default')
+
+# --- Ryoku live theme parity -------------------------------------------------
+req('mod ryoku_theme;' in lib and 'ryoku_theme::spawn_watcher(handle.clone())' in lib, 'native Ryoku theme watcher is not wired')
+for name in ['theme.json', 'shell.json', 'colors.json']:
+    req(name in ryoku_theme, f'Ryoku theme watcher missing {name}')
+req('inotify_init1' in ryoku_theme and 'IN_CLOSE_WRITE' in ryoku_theme and 'IN_MOVED_TO' in ryoku_theme, 'Ryoku theme watcher is not event-driven')
+req('named.and_then' in ryoku_theme and 'if follow' in ryoku_theme and '"surfaceContainerLow"' in ryoku_theme, 'Ryoku Material role precedence drifted')
+req('setInterval(' not in ryoku_live, 'Ryoku theme polling clock returned')
+req('onRyokuThemeChanged' in ryoku_live and "'ryoku-theme-changed'" in read('ui/src/lib/api.ts'), 'live Ryoku theme event bridge missing')
+for token in ['--ryo-paper', '--ryo-paper-lift', '--ryo-panel', '--ryo-card', '--ryo-sidebar-surface', '--ryo-player-surface', '--ryo-ink', '--ryo-bone']:
+    req(token in ryoku_live, f'Ryoku palette does not drive {token}')
+req('t.secondaryContainer' in ryoku_live and 't.primaryContainer' in ryoku_live and 't.tertiaryContainer' in ryoku_live, 'v2.3 accent families are not Material-role driven')
+req('setRyokuSystemTheme(t.light)' in ryoku_live, 'Follow System does not follow Ryoku surface luminance')
+req("const ryokuTokens = initRyokuLiveTokens();" in layout and layout.count('initRyokuLiveTokens()') >= 2, 'main and mini do not both initialise Ryoku live tokens')
 
 # --- Home stability / Edit Home / headings ---------------------------------
 req('buildHomeRegistry' in home and 'HOME_LOCAL_SECTIONS' in home and 'homeSectionTitle' in home, 'Home registry not authoritative')
