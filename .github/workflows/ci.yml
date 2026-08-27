@@ -7,33 +7,51 @@ on:
 jobs:
   linux:
     runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libmpv-dev
+          sudo apt-get install -y             libwebkit2gtk-4.1-dev             build-essential             libxdo-dev             libssl-dev             libayatana-appindicator3-dev             librsvg2-dev             libmpv-dev
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+
       - uses: pnpm/action-setup@v4
         with:
           version: 11
           run_install: false
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: ui/pnpm-lock.yaml
+
       - name: Frontend dependencies
         working-directory: ui
         run: pnpm install --frozen-lockfile
+
       - name: Frontend checks
         working-directory: ui
         run: pnpm check && pnpm build
+
       - name: Rust format
         run: cargo fmt --all -- --check
+
       - name: Rust tests
-        run: cargo test --workspace --locked
+        run: |
+          cargo test --workspace --locked --             --skip mpv_keeps_the_gain_through_pitch_changes_and_failures
+
+      - name: Real libmpv regression
+        timeout-minutes: 2
+        run: |
+          timeout 30s cargo test --locked -p player             mpv_keeps_the_gain_through_pitch_changes_and_failures --             --nocapture             --test-threads=1
+
       - name: Release guard
+        env:
+          RYOTUNES_STATIC_ONLY: "1"
         run: ./scripts/release-check.sh

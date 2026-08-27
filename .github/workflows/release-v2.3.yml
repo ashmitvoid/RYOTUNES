@@ -55,12 +55,20 @@ jobs:
             cd '$GITHUB_WORKSPACE'
             cargo fmt --all
             RYOTUNES_STATIC_ONLY=1 ./scripts/release-check.sh
+
             cd ui
             pnpm check
             pnpm build
             cd ..
+
             cargo fetch --locked
-            CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline
+
+            # This one test intentionally drives a real libmpv instance and an invalid
+            # rubberband filter. It passes on normal Ubuntu CI and real Ryoku hardware,
+            # but can block indefinitely with Arch's newer libmpv inside a nested
+            # GitHub Actions container. Keep it in normal CI; do not let packaging hang.
+            CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline --               --skip mpv_keeps_the_gain_through_pitch_changes_and_failures
+
             CARGO_NET_OFFLINE=true cargo check --workspace --locked --offline
           "
 
@@ -79,11 +87,11 @@ jobs:
           runuser -u builder -- env HOME="$BUILDER_HOME" PATH="$BUILDER_HOME/.cargo/bin:/usr/bin" bash -lc "
             set -euo pipefail
             cd '$GITHUB_WORKSPACE'
-            chmod +x scripts/build-replacement-package.sh scripts/make-source-release.sh scripts/release-check.sh scripts/ryoku-window-rule.sh
+            chmod +x               scripts/build-replacement-package.sh               scripts/make-source-release.sh               scripts/release-check.sh               scripts/ryoku-window-rule.sh
             rm -rf dist
             mkdir -p dist
             ./scripts/build-replacement-package.sh dist
-            RYOTUNES_STATIC_ONLY=1 ./scripts/make-source-release.sh dist/ryotunes-v2.3.0-final-source.tar.gz
+            RYOTUNES_STATIC_ONLY=1 ./scripts/make-source-release.sh               dist/ryotunes-v2.3.0-final-source.tar.gz
             cd dist
             sha256sum ryotunes-v2.3.0-final-source.tar.gz >> SHA256SUMS-v2.3.0.txt
             sort -u SHA256SUMS-v2.3.0.txt -o SHA256SUMS-v2.3.0.txt
@@ -93,7 +101,7 @@ jobs:
         run: |
           ls -lh dist
           cat dist/SHA256SUMS-v2.3.0.txt
-          bsdtar -tf dist/ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst | grep -E 'usr/(bin|lib|share)' | head -80
+          bsdtar -tf dist/ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst             | grep -E 'usr/(bin|lib|share)'             | head -80
 
       - name: Publish GitHub Release
         env:
@@ -106,6 +114,7 @@ jobs:
             dist/ryotunes-v2.3.0-final-source.tar.gz
             dist/SHA256SUMS-v2.3.0.txt
           )
+
           if gh release view v2.3.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload v2.3.0 "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit v2.3.0               --title "Ryotunes v2.3.0"               --notes-file RELEASE_NOTES.md               --latest               --repo "$GITHUB_REPOSITORY"
