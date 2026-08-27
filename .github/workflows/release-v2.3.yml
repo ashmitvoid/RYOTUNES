@@ -32,10 +32,11 @@ jobs:
         run: |
           id builder >/dev/null 2>&1 || useradd -m -s /bin/bash builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
+          echo "BUILDER_HOME=$(getent passwd builder | cut -d: -f6)" >> "$GITHUB_ENV"
 
       - name: Install Rust toolchain and Tauri CLI
         run: |
-          runuser -u builder -- env HOME=/home/builder bash -lc '
+          runuser -u builder -- env HOME="$BUILDER_HOME" bash -lc '
             rustup default stable
             rustup component add rustfmt
             cargo install tauri-cli --locked --version "^2"
@@ -43,14 +44,14 @@ jobs:
 
       - name: Install frontend dependencies
         run: |
-          runuser -u builder -- env HOME=/home/builder PATH=/home/builder/.cargo/bin:/usr/bin bash -lc "
+          runuser -u builder -- env HOME="$BUILDER_HOME" PATH="$BUILDER_HOME/.cargo/bin:/usr/bin" bash -lc "
             cd '$GITHUB_WORKSPACE/ui'
             pnpm install --frozen-lockfile
           "
 
       - name: Validate v2.3 source
         run: |
-          runuser -u builder -- env HOME=/home/builder PATH=/home/builder/.cargo/bin:/usr/bin bash -lc "
+          runuser -u builder -- env HOME="$BUILDER_HOME" PATH="$BUILDER_HOME/.cargo/bin:/usr/bin" bash -lc "
             cd '$GITHUB_WORKSPACE'
             cargo fmt --all
             RYOTUNES_STATIC_ONLY=1 ./scripts/release-check.sh
@@ -65,7 +66,7 @@ jobs:
 
       - name: Build native release binaries
         run: |
-          runuser -u builder -- env HOME=/home/builder PATH=/home/builder/.cargo/bin:/usr/bin CARGO_NET_OFFLINE=true bash -lc "
+          runuser -u builder -- env HOME="$BUILDER_HOME" PATH="$BUILDER_HOME/.cargo/bin:/usr/bin" CARGO_NET_OFFLINE=true bash -lc "
             cd '$GITHUB_WORKSPACE'
             cargo tauri build --no-bundle
             cargo build --release --locked --offline --package sync-server
@@ -75,7 +76,7 @@ jobs:
 
       - name: Build release assets
         run: |
-          runuser -u builder -- env HOME=/home/builder PATH=/home/builder/.cargo/bin:/usr/bin bash -lc "
+          runuser -u builder -- env HOME="$BUILDER_HOME" PATH="$BUILDER_HOME/.cargo/bin:/usr/bin" bash -lc "
             cd '$GITHUB_WORKSPACE'
             chmod +x scripts/build-replacement-package.sh scripts/make-source-release.sh scripts/release-check.sh scripts/ryoku-window-rule.sh
             rm -rf dist
