@@ -1,0 +1,36 @@
+name: One-time v2.3 rustfmt
+
+on:
+  push:
+    branches:
+      - v2.3
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: "!startsWith(github.event.head_commit.message, 'Apply cargo fmt for v2.3')"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v2.3
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Format Rust source and commit
+        run: |
+          cargo fmt --all
+          if git diff --quiet; then
+            echo "No rustfmt changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add '*.rs' ':**/*.rs'
+          git commit -m "Apply cargo fmt for v2.3"
+          git push origin HEAD:v2.3
