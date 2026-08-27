@@ -111,6 +111,7 @@ req('onRyokuThemeChanged' in ryoku_live and "'ryoku-theme-changed'" in read('ui/
 for token in ['--ryo-paper', '--ryo-paper-lift', '--ryo-panel', '--ryo-card', '--ryo-sidebar-surface', '--ryo-player-surface', '--ryo-ink', '--ryo-bone']:
     req(token in ryoku_live, f'Ryoku palette does not drive {token}')
 req('t.secondaryContainer' in ryoku_live and 't.primaryContainer' in ryoku_live and 't.tertiaryContainer' in ryoku_live, 'v2.3 accent families are not Material-role driven')
+req('v2.3 Ryoku live-palette compatibility.' in css and 'html[data-ryo-theme] .ryo-command-dialog' in css and 'html[data-ryo-theme] .ryo-search-suggest' in css, 'legacy fixed-color interaction surfaces are not theme-semantic')
 req('setRyokuSystemTheme(t.light)' in ryoku_live, 'Follow System does not follow Ryoku surface luminance')
 req("const ryokuTokens = initRyokuLiveTokens();" in layout and layout.count('initRyokuLiveTokens()') >= 2, 'main and mini do not both initialise Ryoku live tokens')
 
