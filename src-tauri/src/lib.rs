@@ -14,6 +14,7 @@ mod media;
 mod mini;
 mod orchestrator;
 mod potoken;
+mod ryoku_theme;
 mod session;
 mod state;
 #[cfg(target_os = "windows")]
@@ -292,6 +293,11 @@ pub fn run() {
                 lastfm,
             ));
             app.manage(app_state.clone());
+
+            // Ryoku's own QML apps watch the live palette files. Mirror that with one blocking
+            // inotify watcher rather than a JavaScript polling clock so named themes and wallpaper
+            // palettes reach Ryotunes immediately while idle CPU stays asleep.
+            ryoku_theme::spawn_watcher(handle.clone());
 
             // Local music artwork reaches the webview over the asset protocol, whose configured
             // scope is empty — the folders it may read are the ones the user picked (local.rs).
