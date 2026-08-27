@@ -46,7 +46,9 @@ That split is the centre of the project: the player should feel rich when it is 
 
 Ryotunes v2.3 targets **x86_64 Ryoku, CachyOS and Arch-based systems**.
 
-The v2.3 replacement package identity is **`ryotunes-v2.3 2.3.0-1`**.\n\nThe normal user release is **precompiled**. Installing Ryotunes does not require Node, pnpm, Rust, Cargo or a local Tauri build.
+The v2.3 replacement package identity is **`ryotunes-v2.3 2.3.0-1`**.
+
+The normal user release is **precompiled**. Installing Ryotunes does not require Node, pnpm, Rust, Cargo or a local Tauri build.
 
 Download `ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst` from the [v2.3.0 release](https://github.com/ashmitvoid/RYOTUNES/releases/tag/v2.3.0), then install it with:
 
