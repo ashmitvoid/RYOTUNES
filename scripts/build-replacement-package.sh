@@ -159,42 +159,41 @@ post_remove() {
 }
 INSTALL
 
-cat > "$PKGWORK/PKGBUILD" <<PKG
-pkgname=$PKGNAME
-pkgver=$VERSION
-pkgrel=$PKGREL
+cat > "$PKGWORK/PKGBUILD" <<'PKG'
+pkgname=ryotunes-v2.3
+pkgver=2.3.0
+pkgrel=1
 pkgdesc='Ryotunes v2.3 - Ryoku replacement Linux desktop music client'
 arch=('x86_64')
 url='https://github.com/ashmitvoid/RYOTUNES'
 license=('GPL-3.0-or-later')
 depends=('webkit2gtk-4.1' 'libappindicator-gtk3' 'mpv' 'openssl' 'librsvg' 'desktop-file-utils' 'hicolor-icon-theme' 'xdg-utils')
 provides=('ryotunes=2.3.0')
-install='$INSTALLSCRIPT'
-source=('$BINNAME' 'ryotunes' '$SYNCNAME' 'ryotunes.desktop' 'activate-replacement' 'deactivate-replacement' '$HOOKNAME' '$INSTALLSCRIPT' 'LICENSE' 'README.md' 'RELEASE_NOTES.md' 'UPSTREAM.md' 'RyotunesBarWidget.qml' 'QUICKSHELL_README.md' 'icon32.png' 'icon64.png' 'icon128.png' 'icon256.png' 'icon512.png' 'ryotunes-window-rule.lua')
+install='ryotunes-v2.3.install'
+source=('ryotunes-v2.3' 'ryotunes' 'ryotunes-v2.3-sync' 'ryotunes.desktop' 'activate-replacement' 'deactivate-replacement' '99-ryotunes-v2.3-replacement.hook' 'ryotunes-v2.3.install' 'LICENSE' 'README.md' 'RELEASE_NOTES.md' 'UPSTREAM.md' 'RyotunesBarWidget.qml' 'QUICKSHELL_README.md' 'icon32.png' 'icon64.png' 'icon128.png' 'icon256.png' 'icon512.png' 'ryotunes-window-rule.lua')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 package() {
-  install -Dm755 $BINNAME "$pkgdir/usr/bin/$BINNAME"
-  install -Dm755 ryotunes "$pkgdir$LIBDIR/ryotunes"
-  install -Dm755 $SYNCNAME "$pkgdir/usr/bin/$SYNCNAME"
-  install -Dm755 activate-replacement "$pkgdir$LIBDIR/activate-replacement"
-  install -Dm755 deactivate-replacement "$pkgdir$LIBDIR/deactivate-replacement"
-  install -Dm644 ryotunes.desktop "$pkgdir$SHAREDIR/ryotunes.desktop"
-  install -Dm644 $HOOKNAME "$pkgdir/usr/share/libalpm/hooks/$HOOKNAME"
+  install -Dm755 ryotunes-v2.3 "$pkgdir/usr/bin/ryotunes-v2.3"
+  install -Dm755 ryotunes "$pkgdir/usr/lib/ryotunes-v2.3/ryotunes"
+  install -Dm755 ryotunes-v2.3-sync "$pkgdir/usr/bin/ryotunes-v2.3-sync"
+  install -Dm755 activate-replacement "$pkgdir/usr/lib/ryotunes-v2.3/activate-replacement"
+  install -Dm755 deactivate-replacement "$pkgdir/usr/lib/ryotunes-v2.3/deactivate-replacement"
+  install -Dm644 ryotunes.desktop "$pkgdir/usr/share/ryotunes-v2.3/ryotunes.desktop"
+  install -Dm644 99-ryotunes-v2.3-replacement.hook "$pkgdir/usr/share/libalpm/hooks/99-ryotunes-v2.3-replacement.hook"
   install -Dm644 RyotunesBarWidget.qml "$pkgdir/usr/share/ryotunes-v2.3/quickshell/RyotunesBarWidget.qml"
-  install -Dm644 QUICKSHELL_README.md "$pkgdir/usr/share/doc/$PKGNAME/QUICKSHELL.md"
+  install -Dm644 QUICKSHELL_README.md "$pkgdir/usr/share/doc/ryotunes-v2.3/QUICKSHELL.md"
   install -Dm644 ryotunes-window-rule.lua "$pkgdir/usr/share/ryotunes-v2.3/ryotunes-window-rule.lua"
-  install -Dm644 icon32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/$ICONNAME.png"
-  install -Dm644 icon64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/$ICONNAME.png"
-  install -Dm644 icon128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/$ICONNAME.png"
-  install -Dm644 icon256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/$ICONNAME.png"
-  install -Dm644 icon512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$ICONNAME.png"
-  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$PKGNAME/LICENSE"
-  install -Dm644 README.md "$pkgdir/usr/share/doc/$PKGNAME/README.md"
-  install -Dm644 RELEASE_NOTES.md "$pkgdir/usr/share/doc/$PKGNAME/RELEASE_NOTES.md"
-  install -Dm644 UPSTREAM.md "$pkgdir/usr/share/doc/$PKGNAME/UPSTREAM.md"
+  install -Dm644 icon32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/ryotunes-v2.3.png"
+  install -Dm644 icon64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/ryotunes-v2.3.png"
+  install -Dm644 icon128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/ryotunes-v2.3.png"
+  install -Dm644 icon256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/ryotunes-v2.3.png"
+  install -Dm644 icon512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/ryotunes-v2.3.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/ryotunes-v2.3/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/ryotunes-v2.3/README.md"
+  install -Dm644 RELEASE_NOTES.md "$pkgdir/usr/share/doc/ryotunes-v2.3/RELEASE_NOTES.md"
+  install -Dm644 UPSTREAM.md "$pkgdir/usr/share/doc/ryotunes-v2.3/UPSTREAM.md"
 }
 PKG
-
 (cd "$PKGWORK" && makepkg --clean --cleanbuild --noconfirm)
 PKGFILE="$(find "$PKGWORK" -maxdepth 1 -name "$PKGNAME-$VERSION-$PKGREL-*.pkg.tar.zst" -print -quit)"
 [[ -n "$PKGFILE" ]] || { echo "package creation failed" >&2; exit 1; }
