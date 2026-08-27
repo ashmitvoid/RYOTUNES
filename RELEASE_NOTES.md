@@ -43,6 +43,6 @@ v2.3 folds the first post-v2.2 field fixes into one testable release line. It ke
 
 ## Packaging
 
-The v2.3 replacement package identity is **`ryotunes-v2.3 2.3.0-1`**.
+Field-tested on Ryoku/CachyOS with live theme switching, startup geometry and replacement-package migration verified.\n\nThe v2.3 replacement package identity is **`ryotunes-v2.3 2.3.0-1`**.
 
 It keeps `ryoku-desktop` installed, preserves the genuine stock Ryotunes entry points for rollback, installs the custom binary under `/usr/lib/ryotunes-v2.3/ryotunes`, exposes one normal `/usr/bin/ryotunes` route and desktop launcher, and installs the managed Ryoku window rule.
