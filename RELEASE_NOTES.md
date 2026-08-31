@@ -3,8 +3,7 @@
 v2.4 expands Ryotunes beyond an account-only YouTube Music workflow without changing the native
 playback/lifecycle architecture that keeps it quiet on Ryoku. The release adds demand-driven
 Internet Radio, persistent playlists that work while signed out, and a configurable Discord
-"Listening to …" title. Demand 3 from the v2.4 planning set is intentionally not part of this
-release.
+"Listening to …" title.
 
 ## Internet Radio
 
