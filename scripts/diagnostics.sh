@@ -6,7 +6,7 @@ line() { printf '%-22s %s\n' "$1" "$2"; }
 
 printf '%s\n' 'Ryotunes diagnostics (sanitized)'
 printf '%s\n' '--------------------------------'
-line 'Ryotunes package:' "$(pacman -Q ryotunes-v2.3 2>/dev/null | awk '{print $2}' || pacman -Q ryotunes 2>/dev/null | awk '{print $2}' || printf 'source/unpackaged')"
+line 'Ryotunes package:' "$(pacman -Q ryotunes-v2.4 2>/dev/null | awk '{print $2}' || pacman -Q ryotunes 2>/dev/null | awk '{print $2}' || printf 'source/unpackaged')"
 line 'Kernel:' "$(uname -sr 2>/dev/null || printf 'unknown')"
 line 'Architecture:' "$(uname -m 2>/dev/null || printf 'unknown')"
 line 'Session:' "${XDG_SESSION_TYPE:-unknown}"
@@ -21,7 +21,7 @@ line 'Hyprland:' "$(hyprctl version -j 2>/dev/null | sed -n 's/.*"tag":"\([^"]*\
 line 'GPU classes:' "$(lspci 2>/dev/null | grep -Ei 'VGA|3D controller' | sed -E 's/^[0-9a-f:.]+ //' | paste -sd ';' - || printf 'unknown')"
 
 find_ryotunes_pid() {
-  local expected='/usr/lib/ryotunes-v2.3/ryotunes' p exe
+  local expected='/usr/lib/ryotunes-v2.4/ryotunes' p exe
   for p in /proc/[0-9]*; do
     [[ -e "$p/exe" ]] || continue
     exe="$(readlink -f "$p/exe" 2>/dev/null || true)"
