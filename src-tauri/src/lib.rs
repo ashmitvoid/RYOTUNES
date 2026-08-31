@@ -238,7 +238,14 @@ pub fn run() {
             }
 
             let session = Session { locale: Locale::default(), visitor_data, data_sync_id, cookie };
-            let it = InnerTube::new(session, proxy.as_deref()).expect("build InnerTube");
+            let it = match InnerTube::new(session.clone(), proxy.as_deref()) {
+                Ok(it) => it,
+                Err(error) => {
+                    tracing::warn!(%error, "stored proxy is invalid — starting without it");
+                    db.delete_setting("proxy");
+                    InnerTube::new(session, None).expect("build InnerTube without proxy")
+                }
+            };
             let clients = Clients::bundled();
 
             let mut player = Player::new(cache_dir.to_str().unwrap()).expect("init libmpv");

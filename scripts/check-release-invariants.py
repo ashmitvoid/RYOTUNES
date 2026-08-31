@@ -55,6 +55,11 @@ db = read('src-tauri/src/db.rs')
 add_to_playlist_ui = read('ui/src/lib/components/AddToPlaylist.svelte')
 radio_ui = read('ui/src/routes/radio/+page.svelte')
 package_builder = read('scripts/build-replacement-package.sh')
+lastfm = read('src-tauri/src/lastfm.rs')
+local_rs = read('src-tauri/src/local.rs')
+default_cap = json.loads(read('src-tauri/capabilities/default.json'))
+mini_cap = json.loads(read('src-tauri/capabilities/mini.json'))
+security_workflow = read('.github/workflows/security.yml')
 
 # --- frozen v2.4 identity ----------------------------------------------------
 req('version = "2.4.0"' in cargo, 'workspace version is not 2.4.0')
@@ -75,6 +80,31 @@ active = '\n'.join(read(p) for p in [
 for forbidden in ['video_stream', 'set_webkit_media_enabled', 'videoproxy', 'hide_videos']:
     req(forbidden not in active, f'audio-only path regressed: {forbidden}')
 req('<video ' not in now and '<video>' not in now, 'video element returned to Now Playing')
+
+# --- native/WebKit security boundary ---------------------------------------
+tauri_version = re.search(r'name = "tauri"\nversion = "(\d+)\.(\d+)\.(\d+)"', lock)
+req(tauri_version is not None and tuple(map(int, tauri_version.groups())) >= (2, 11, 1),
+    'Tauri regressed into the GHSA-7gmj-67g7-phm9 affected range')
+req('normalize_ui_setting' in commands and 'normalize_proxy_setting' in commands,
+    'renderer-writable settings are not validated natively')
+req('normalize_lt_server_url' in commands and 'ws://' in commands and 'wss://' in commands,
+    'Listen Together server URL validation missing')
+req('canonical_music_folder' in commands and 'filesystem root' in commands,
+    'local music folder path guard missing')
+req('std::process::Command::new("cmd")' not in lastfm and 'explorer.exe' in lastfm and 'browser_url' in lastfm,
+    'external browser URL can still pass through a command shell')
+req('const SCAN_VERSION: &str = "5"' in local_rs and 'sidecar_cover' in local_rs,
+    'local cover migration/copy hardening missing')
+req('for dir in folders(db)' not in local_rs and 'scope.allow_directory(&covers, true)' in local_rs,
+    'watched music folders are recursively exposed through the asset protocol')
+req(default_cap.get('windows') == ['main'] and 'dialog:allow-open' in default_cap.get('permissions', []),
+    'main capability boundary changed unexpectedly')
+req(mini_cap.get('windows') == ['mini'] and 'dialog:allow-open' not in mini_cap.get('permissions', []),
+    'mini player has unnecessary file-dialog capability')
+req('cargo audit' in security_workflow and 'pnpm audit' in security_workflow,
+    'scheduled dependency security audit workflow missing')
+req("DEFAULT_PRESENCE_NAME: &str = \"Ryotunes\"" in read('src-tauri/src/discord.rs'),
+    'Discord default presence title is not Ryotunes')
 
 # --- v2.4 Radio / device playlists / Discord title -------------------------
 req('mod radio;' in lib and 'commands::radio_stations' in lib and 'commands::play_radio_station' in lib,
@@ -192,7 +222,8 @@ req('showMenu?: boolean;' in trackrow and 'contextMenu?: boolean;' in trackrow, 
 
 # --- artwork + theme + smoothness ------------------------------------------
 req('const MAX_READY_ARTWORK = 36' in art_cache and 'new Map<string, true>()' in art_cache, 'bounded artwork readiness cache missing')
-req("typeof image.decode === 'function'" in art_img and 'cancelled' in art_img and 'preview' in art_img, 'decode-before-swap/stale artwork guard missing')
+req("typeof image.decode === 'function'" in art_img and 'needsSwap' in art_img and 'fullFailed' in art_img and 'class:sharp={!needsSwap || fullFailed}' in art_img, 'sharp artwork fallback/decode-before-swap guard missing')
+req('size={960}' in now and 'previewSize={160}' in now, 'Now Playing artwork resolution regressed')
 req('ArtworkImage' in now and 'ArtworkImage' in mini, 'large artwork surfaces do not share artwork pipeline')
 for token in ['--ryo-paper:#d2cabd','--ryo-paper-lift:#e2d8c9','--ryo-panel:#c4baab','--ryo-card:#dbd1c3','--ryo-sidebar-surface:#bec6b8','--ryo-player-surface:#c1c7cc','--ryo-ink:#28231e','--ryo-light-sage:#9faa94','--ryo-light-blue:#9aaabc','--ryo-light-clay:#c58f73']:
     req(token in css, f'v2.3 Light token missing: {token}')

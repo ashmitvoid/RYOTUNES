@@ -17,6 +17,112 @@ use crate::state::{
 
 type St<'a> = State<'a, Arc<AppState>>;
 
+const MAX_CONFIG_URL: usize = 2_048;
+
+fn normalize_proxy_setting(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(String::new());
+    }
+    if raw.len() > MAX_CONFIG_URL {
+        return Err("Proxy URL is too long.".into());
+    }
+    let url = tauri::Url::parse(raw).map_err(|_| "Enter a valid HTTP or HTTPS proxy URL.")?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err("Proxy must use http:// or https:// and include a host.".into());
+    }
+    if url.fragment().is_some() || url.query().is_some() || !matches!(url.path(), "" | "/") {
+        return Err("Proxy URL must contain only scheme, credentials, host and port.".into());
+    }
+    Ok(url.to_string())
+}
+
+fn known_stream_client(name: &str) -> bool {
+    name == innertube::MAIN_CLIENT
+        || innertube::STREAM_FALLBACK_ORDER.contains(&name)
+        || innertube::UPLOAD_FALLBACK_ORDER.contains(&name)
+}
+
+fn normalize_ui_setting(key: &str, raw: &str) -> Result<String, String> {
+    match key {
+        "volume" => {
+            let value: i64 = raw.parse().map_err(|_| "Volume must be a number from 0 to 100.")?;
+            (0..=100)
+                .contains(&value)
+                .then(|| value.to_string())
+                .ok_or_else(|| "Volume must be between 0 and 100.".into())
+        }
+        "proxy" => normalize_proxy_setting(raw),
+        "quality" => matches!(raw, "LOW" | "AUTO" | "HIGH")
+            .then(|| raw.to_owned())
+            .ok_or_else(|| "Unknown audio quality.".into()),
+        "enable_history"
+        | "discord_rpc"
+        | "close_to_tray"
+        | "autostart"
+        | "autoplay"
+        | "prevent_duplicates"
+        | "lyrics_boidu"
+        | "low_resource_mode" => matches!(raw, "true" | "false")
+            .then(|| raw.to_owned())
+            .ok_or_else(|| format!("{key} must be true or false.")),
+        "disabled_stream_clients" => {
+            let mut names: Vec<&str> = raw
+                .split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .collect();
+            if names.iter().any(|name| !known_stream_client(name)) {
+                return Err("Unknown stream client in disabled-client list.".into());
+            }
+            names.sort_unstable();
+            names.dedup();
+            Ok(names.join(","))
+        }
+        "ui_scale" => {
+            let value: i32 = raw.parse().map_err(|_| "Interface scale must be a percentage.")?;
+            ((80..=140).contains(&value) && value % 10 == 0)
+                .then(|| value.to_string())
+                .ok_or_else(|| "Interface scale must be 80–140% in 10% steps.".into())
+        }
+        // Discord has its own Unicode-aware 2–128 character validator below.
+        "discord_presence_name" => Ok(raw.to_owned()),
+        _ => Err(format!("unknown setting: {key}")),
+    }
+}
+
+fn normalize_lt_server_url(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw.len() > MAX_CONFIG_URL {
+        return Err("Listen Together server URL is too long.".into());
+    }
+    let url = tauri::Url::parse(raw).map_err(|_| "Enter a valid ws:// or wss:// server URL.")?;
+    if !matches!(url.scheme(), "ws" | "wss") || url.host_str().is_none() {
+        return Err("Listen Together server must use ws:// or wss:// and include a host.".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+        return Err("Listen Together server URLs cannot contain credentials or fragments.".into());
+    }
+    Ok(url.to_string())
+}
+
+fn canonical_music_folder(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err("Choose a music folder.".into());
+    }
+    let path = std::path::Path::new(raw)
+        .canonicalize()
+        .map_err(|_| "That music folder no longer exists or cannot be accessed.")?;
+    if !path.is_dir() {
+        return Err("Choose a directory, not a file.".into());
+    }
+    if path.parent().is_none() {
+        return Err("For safety, choose a music folder instead of the filesystem root.".into());
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 pub async fn search(state: St<'_>, query: String) -> Result<Vec<SongItem>, String> {
     let client = state.clients.get(innertube::METADATA_CLIENT).ok_or("metadata client missing")?;
@@ -209,12 +315,18 @@ pub async fn toggle_pause(state: St<'_>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn seek(state: St<'_>, position: f64) -> Result<(), String> {
+    if !position.is_finite() || position < 0.0 {
+        return Err("Seek position must be a non-negative finite number.".into());
+    }
     // Routed through AppState so a Listen Together host broadcasts the seek and a guest is blocked.
     state.user_seek(position).await
 }
 
 #[tauri::command]
 pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
+    if !(0..=100).contains(&volume) {
+        return Err("Volume must be between 0 and 100.".into());
+    }
     state.player.set_volume(volume).map_err(|e| e.to_string())?;
     // There is one volume and there can be two windows (the mini player). Without this the one
     // that didn't move the slider keeps showing the old level and lies about what you're hearing.
@@ -226,6 +338,12 @@ pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
 /// both reset to 1.0 / 0 on restart, so nobody wonders next week why everything sounds wrong.
 #[tauri::command]
 pub async fn set_playback_params(state: St<'_>, speed: f64, semitones: i32) -> Result<(), String> {
+    if !speed.is_finite() || !(0.25..=2.0).contains(&speed) {
+        return Err("Tempo must be between 0.25× and 2.00×.".into());
+    }
+    if !(-12..=12).contains(&semitones) {
+        return Err("Pitch must be between -12 and +12 semitones.".into());
+    }
     // Pitch first: it's the one that can fail (no librubberband), and it rolls itself back, so a
     // failure leaves nothing applied and the UI can revert both steppers together.
     state.player.set_pitch(semitones).map_err(|e| e.to_string())?;
@@ -304,6 +422,7 @@ pub async fn set_setting(
     if !UI_SETTINGS.contains(&key.as_str()) {
         return Err(format!("unknown setting: {key}"));
     }
+    let value = normalize_ui_setting(&key, &value)?;
     // Autostart is transactional: update the real OS registration first, verify it, and persist
     // only the resulting truth. This prevents the Settings switch drifting away from Linux.
     if key == "autostart" {
@@ -1486,6 +1605,7 @@ pub async fn add_local_folder(
     state: St<'_>,
     path: String,
 ) -> Result<crate::local::LocalLibrary, String> {
+    let path = canonical_music_folder(&path)?;
     crate::local::add_folder(&state.db, path);
     scan_local(&state).await
 }
@@ -1525,7 +1645,7 @@ pub async fn lt_get_state(state: St<'_>) -> Result<serde_json::Value, String> {
 /// Set and persist the Listen Together WebSocket server URL.
 #[tauri::command]
 pub async fn lt_set_server_url(state: St<'_>, url: String) -> Result<(), String> {
-    let url = url.trim().to_string();
+    let url = normalize_lt_server_url(&url)?;
     state.db.set_setting("lt_server_url", &url);
     state.lt.set_server_url(url).await;
     Ok(())
@@ -1631,9 +1751,6 @@ pub async fn get_lyrics(
 /// the app itself off the SPA, with no way back.
 #[tauri::command]
 pub async fn open_external(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") && !url.starts_with("http://") {
-        return Err("only http(s) links".into());
-    }
     crate::lastfm::open_browser(&url)
 }
 
@@ -1661,6 +1778,35 @@ pub async fn lastfm_status(state: St<'_>) -> Result<serde_json::Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renderer_settings_are_validated_at_the_native_boundary() {
+        assert_eq!(normalize_ui_setting("quality", "HIGH").unwrap(), "HIGH");
+        assert!(normalize_ui_setting("quality", "DROP TABLE").is_err());
+        assert_eq!(normalize_ui_setting("volume", "75").unwrap(), "75");
+        assert!(normalize_ui_setting("volume", "101").is_err());
+        assert_eq!(normalize_ui_setting("ui_scale", "110").unwrap(), "110");
+        assert!(normalize_ui_setting("ui_scale", "111").is_err());
+        assert!(normalize_proxy_setting("file:///tmp/socket").is_err());
+        assert!(normalize_proxy_setting("http://127.0.0.1:8080").is_ok());
+    }
+
+    #[test]
+    fn listen_together_accepts_only_websocket_urls() {
+        assert!(normalize_lt_server_url("wss://example.com/room").is_ok());
+        assert!(normalize_lt_server_url("ws://127.0.0.1:4000").is_ok());
+        assert!(normalize_lt_server_url("https://example.com").is_err());
+        assert!(normalize_lt_server_url("javascript:alert(1)").is_err());
+        assert!(normalize_lt_server_url("wss://user:pass@example.com").is_err());
+    }
+
+    #[test]
+    fn local_music_picker_cannot_register_the_filesystem_root() {
+        let temp = std::env::temp_dir();
+        assert!(canonical_music_folder(temp.to_string_lossy().as_ref()).is_ok());
+        #[cfg(unix)]
+        assert!(canonical_music_folder("/").is_err());
+    }
 
     #[test]
     fn on_repeat_rows_shed_the_queue_slot_they_were_played_from() {

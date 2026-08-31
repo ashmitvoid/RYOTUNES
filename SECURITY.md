@@ -1,7 +1,74 @@
 # Security and privacy
 
-Ryotunes stores account/session state locally in its Tauri application-data directory. Do not attach that directory, SQLite database, browser session data, or raw application logs to public bug reports.
+Ryotunes is a Tauri desktop application: the UI is rendered by the operating system WebView
+(WebKitGTK on Linux), while playback, account state, filesystem access and network integrations live
+in Rust. Treat both sides as part of the security boundary.
 
-For Discord support, use `./scripts/diagnostics.sh`. It reports platform and dependency versions while intentionally excluding account details, cookies, tokens, local media paths, hostnames, and configured network endpoints.
+## Keep the system WebView current
 
-If you discover a bug that exposes credentials or session data, avoid posting the secret publicly. Revoke or sign out the affected session first, then report the issue with sanitized reproduction steps.
+Ryotunes does **not** bundle its own WebKit engine. On Arch/CachyOS/Ryoku, WebKitGTK is supplied and
+patched by the system package manager. Keep the machine fully updated with `pacman -Syu`.
+
+At the time of the v2.4.1 hardening pass (September 2026), WebKitGTK **2.52.6** is the stable
+security baseline. WebKitGTK advisory WSA-2026-0005 lists vulnerabilities affecting releases before
+2.52.6. `./scripts/diagnostics.sh` reports the installed WebKitGTK version without exposing private
+paths or account information.
+
+The Rust Tauri dependency is also kept above **2.11.1**, which contains the fix for
+GHSA-7gmj-67g7-phm9 (origin confusion allowing some remote pages to be mistaken for trusted local
+origins on affected platforms).
+
+## WebView / IPC design
+
+- The normal `main` and `mini` surfaces load the bundled Ryotunes frontend, not a remote web app.
+- The Google sign-in WebView has a separate `login` label and is not included in the main/mini
+  capability files.
+- The mini player has no file-dialog permission; only the main surface can open native file/folder
+  pickers.
+- Renderer-writable settings, external URLs, Listen Together endpoints, media parameters and local
+  music folders are validated again in Rust. The frontend is never treated as an authorization
+  boundary.
+- External links are opened by passing a validated HTTP(S) URL directly to the OS opener. They are
+  never interpolated into a shell command.
+- The Tauri asset protocol has an empty static scope. Local cover art is copied into Ryotunes-owned
+  storage; watched music directories are not recursively exposed to the renderer.
+- Account cookies, delegated YouTube identity values, visitor data, queue internals and stream URLs
+  are deliberately excluded from the settings IPC API.
+
+### CSP note
+
+The global Tauri CSP remains unset because the cipher and PoToken extraction stack uses isolated,
+hidden `data:` WebViews that require inline/dynamic JavaScript. Tauri injects a configured global
+CSP into those data documents as well, which breaks the extraction harness. Those hidden WebViews
+are not granted the main/mini capability set. A future move of the harness to a dedicated custom
+protocol can allow a strict per-application CSP without weakening playback.
+
+## Local secrets and files
+
+Session state is stored in the Tauri application-data directory. On Unix, Ryotunes sets its app data
+and cache directories to mode `0700` and its SQLite state database to `0600`.
+
+Do **not** attach the application-data directory, SQLite database, browser session data, or raw
+application logs to public bug reports. They may contain account/session material or local media
+paths.
+
+For support, prefer:
+
+```sh
+./scripts/diagnostics.sh
+```
+
+The diagnostics script intentionally excludes account details, cookies, tokens, local media paths,
+hostnames and configured network endpoints.
+
+## Dependency monitoring
+
+GitHub Dependabot monitors Rust, frontend and GitHub Actions dependencies weekly. The
+`Security audit` workflow also runs RustSec (`cargo audit`) and a production frontend dependency
+audit (`pnpm audit`) on the hardening branch/main and on a weekly schedule.
+
+## Reporting a vulnerability
+
+If you discover a bug that exposes credentials or session data, do not post the secret publicly.
+Revoke or sign out the affected session first, then report the issue with sanitized reproduction
+steps through GitHub's private vulnerability-reporting channel when available.

@@ -12,7 +12,16 @@ line 'Architecture:' "$(uname -m 2>/dev/null || printf 'unknown')"
 line 'Session:' "${XDG_SESSION_TYPE:-unknown}"
 line 'Desktop:' "${XDG_CURRENT_DESKTOP:-unknown}"
 line 'Wayland display:' "${WAYLAND_DISPLAY:+present}"
-line 'WebKitGTK:' "$(pkg-config --modversion webkit2gtk-4.1 2>/dev/null || printf 'unknown')"
+webkit_version="$(pkg-config --modversion webkit2gtk-4.1 2>/dev/null || printf 'unknown')"
+line 'WebKitGTK:' "$webkit_version"
+if [[ "$webkit_version" != 'unknown' ]]; then
+  oldest="$(printf '%s\n' '2.52.6' "$webkit_version" | sort -V | head -n 1)"
+  if [[ "$oldest" != '2.52.6' ]]; then
+    line 'WebKit security:' 'UPDATE RECOMMENDED (2.52.6+ baseline)'
+  else
+    line 'WebKit security:' 'current for 2.52.6 baseline'
+  fi
+fi
 line 'mpv:' "$(mpv --version 2>/dev/null | head -n 1 | sed 's/^mpv //')"
 line 'Rust:' "$(rustc --version 2>/dev/null || printf 'not installed')"
 line 'Node:' "$(node --version 2>/dev/null || printf 'not installed')"

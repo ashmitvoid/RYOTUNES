@@ -42,7 +42,7 @@
 	let settings = $state<Record<string, string>>({});
 	let clients = $state<string[]>([]);
 	let proxyInput = $state('');
-	let discordNameInput = $state('Music');
+	let discordNameInput = $state('Ryotunes');
 	let savingDiscordName = $state(false);
 	let loaded = $state(false);
 	let clearing = $state(false);
@@ -124,7 +124,7 @@
 			settings = s;
 			clients = c;
 			proxyInput = s.proxy ?? '';
-			discordNameInput = s.discord_presence_name?.trim() || 'Music';
+			discordNameInput = s.discord_presence_name?.trim() || 'Ryotunes';
 			if (s.low_resource_mode === 'true' && !appearance.lowResourceMode) setAppearance({ lowResourceMode: true });
 			if (s.low_resource_mode !== 'true' && appearance.lowResourceMode) {
 				settings.low_resource_mode = 'true';
@@ -206,7 +206,7 @@
 
 	async function saveDiscordName() {
 		if (savingDiscordName) return;
-		const value = discordNameInput.trim() || 'Music';
+		const value = discordNameInput.trim() || 'Ryotunes';
 		const length = [...value].length;
 		if (length < 2 || length > 128) {
 			toast.error('Discord presence title must be between 2 and 128 characters');
@@ -226,7 +226,7 @@
 	}
 
 	async function resetDiscordName() {
-		discordNameInput = 'Music';
+		discordNameInput = 'Ryotunes';
 		await saveDiscordName();
 	}
 
@@ -394,7 +394,7 @@
 							<Input
 								bind:value={discordNameInput}
 								maxlength={128}
-								placeholder="Music"
+								placeholder="Ryotunes"
 								aria-label="Discord presence title"
 							/>
 							<Button
@@ -408,14 +408,14 @@
 							<Button
 								variant="ghost"
 								size="sm"
-								disabled={savingDiscordName || discordNameInput === 'Music'}
+								disabled={savingDiscordName || discordNameInput === 'Ryotunes'}
 								onclick={resetDiscordName}
 							>
 								Reset
 							</Button>
 						</div>
 						<p class="mt-2 text-xs text-muted-foreground">
-							Preview: Listening to {discordNameInput.trim() || 'Music'}
+							Preview: Listening to {discordNameInput.trim() || 'Ryotunes'}
 						</p>
 					</div>
 					<div class="flex items-start justify-between gap-4 border-b py-3">
