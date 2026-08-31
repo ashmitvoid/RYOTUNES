@@ -917,6 +917,9 @@ pub async fn start_radio(
     id: String,
     name: Option<String>,
 ) -> Result<(), String> {
+    if crate::radio::is_radio_id(&id) || is_local_playlist_id(&id) {
+        return Err("This item does not have a YouTube Music radio seed.".into());
+    }
     let state = state.inner().clone();
     state.start_radio(&kind, &id, name).await
 }
@@ -1022,6 +1025,9 @@ fn require_login(state: &Arc<AppState>) -> Result<&innertube::YouTubeClient, Str
 /// mutually exclusive, so a dislike un-likes in the same call and the UI never has to send two.
 #[tauri::command]
 pub async fn rate(state: St<'_>, video_id: String, rating: Rating) -> Result<(), String> {
+    if crate::radio::is_radio_id(&video_id) || crate::local::is_local_song(&video_id) {
+        return Err("This track does not have a YouTube Music rating.".into());
+    }
     let client = require_login(&state)?;
     // Any detached refresh already in flight was asked before this write existed.
     state.rate_epoch.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
