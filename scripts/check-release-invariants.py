@@ -54,6 +54,7 @@ radio = read('src-tauri/src/radio.rs')
 db = read('src-tauri/src/db.rs')
 add_to_playlist_ui = read('ui/src/lib/components/AddToPlaylist.svelte')
 radio_ui = read('ui/src/routes/radio/+page.svelte')
+package_builder = read('scripts/build-replacement-package.sh')
 
 # --- frozen v2.4 identity ----------------------------------------------------
 req('version = "2.4.0"' in cargo, 'workspace version is not 2.4.0')
@@ -231,6 +232,10 @@ req("local expected='/usr/lib/ryotunes-v2.4/ryotunes'" in diag, 'diagnostics exp
 req('for p in /proc/[0-9]*' in diag and 'readlink -f "$p/exe"' in diag, 'diagnostics do not identify process through /proc/<pid>/exe')
 req('/home/' not in diag and '/Users/' not in diag, 'diagnostics contain private user paths')
 req('state_home="${XDG_DATA_HOME:-$HOME/.local/share}/ryotunes-v2.4"' in rule, 'Ryoku rule state path is not versioned for v2.4')
+req('adopt_previous_backup' in package_builder and '/var/lib/ryotunes-v2.3/stock' in package_builder,
+    'v2.4 replacement package does not inherit the previous stock rollback backup')
+req("conflicts=('ryotunes-v2.3'" in package_builder,
+    'v2.4 package does not declare the previous custom package generation as a conflict')
 
 # Frontend settings whitelist stays synchronized with Rust command boundary.
 ui_block = commands.split('const UI_SETTINGS:',1)[1].split('];',1)[0]
