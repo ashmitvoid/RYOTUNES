@@ -6,6 +6,10 @@ on:
       - v2.4
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux-x86_64:
     runs-on: ubuntu-24.04
