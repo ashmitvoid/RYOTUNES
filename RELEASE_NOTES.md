@@ -1,48 +1,83 @@
-# Ryotunes v2.3 — Ryoku polish release
+# Ryotunes v2.4 — Radio, device playlists and Discord presence controls
 
-v2.3 folds the first post-v2.2 field fixes into one testable release line. It keeps the audio-only native playback, WebKit hibernation, MPRIS, tray lifecycle and stable Home architecture from v2.2 while fixing the startup geometry and polishing the two most visible UI rough edges reported after release.
+v2.4 expands Ryotunes beyond an account-only YouTube Music workflow without changing the native
+playback/lifecycle architecture that keeps it quiet on Ryoku. The release adds demand-driven
+Internet Radio, persistent playlists that work while signed out, and a configurable Discord
+"Listening to …" title. Demand 3 from the v2.4 planning set is intentionally not part of this
+release.
 
-## Fixed in v2.3
+## Internet Radio
 
-### Native Ryoku theme parity
-- Follow System now resolves the same Material-role chain as Ryoku's shared `Tokens.qml`: named `shell.json themePalette` first, wallpaper `colors.json` while enabled, then signature defaults.
-- Main window and mini-player both retint immediately when Ryoku Settings changes a named palette or wallpaper-derived scheme.
-- Linux uses an event-driven inotify watcher on Ryoku's config/cache directories; the old 60-second frontend polling clock is gone, so there is no theme delay and no new idle WebKit wakeup loop.
-- The current palette is applied while the WebView is still hidden, before the frontend-ready reveal handshake, preventing a stale/default-colour flash at launch or reconstruction.
-- The richer v2.3 Light surfaces now take their sage/blue/clay accent families from Ryoku's primary/secondary/tertiary Material roles instead of fixed colours, avoiding palette colour defects.
+- A dedicated **Radio** surface is now available from Discover in the Ryoku sidebar.
+- Station metadata comes from the community-run Radio Browser directory.
+- Opening Radio fetches a bounded first page of popular stations; searching and **Load more** are
+  explicit user actions. There is no startup Radio request and no permanent Radio polling loop.
+- Directory requests use mirror discovery plus a short fallback set, bounded timeouts and broken
+  station filtering.
+- Selecting a station hands its validated HTTP(S) stream directly to the existing native libmpv
+  playback path. The frontend never owns the stream clock.
+- Station click registration is best-effort and never blocks or fails playback.
+- A small bounded native station cache allows a persisted live-radio queue to be restored without
+  treating a synthetic station id as a YouTube video id.
+- Live Radio stays out of YouTube-only actions: ratings, YouTube radio seeds, YouTube playlist
+  writes and YouTube share links are not offered for a station.
+- Live Radio does not enter On Repeat, Last.fm scrobbles, lyrics lookup or Home artist
+  personalization.
+- Listen Together deliberately rejects Live Radio in v2.4 because another peer cannot resolve a
+  station record cached only on this machine.
 
-### Ryoku / Hyprland startup geometry
-- The managed Ryoku window rule now owns the full startup policy: float, **1760×1000**, and center.
-- This fixes the small-window launch seen when Tauri's post-map resize request lost to compositor policy.
-- The title match remains exact, so the separate `Ryotunes Mini` window is not affected.
+## Device playlists — no Google account required
 
-### Home playback console spacing
-- Added balanced vertical breathing room around Previous / Play-Pause / Next / Queue controls.
-- The controls no longer visually touch the divider beneath them.
-- The existing card dimensions are retained by tightening nearby metadata spacing rather than simply enlarging the hero.
+- **New playlist** is now available while signed out in both Library and the expanded sidebar.
+- Signed-out playlists are persistent **device playlists** stored in Ryotunes' SQLite database.
+  Their songs, ordering metadata and names survive app restarts and Google sign-in/sign-out.
+- Device playlists remain visible and usable after signing in; signing out never clears them.
+- The Add to playlist dialog no longer dead-ends when no playlist exists:
+  - **+ New playlist** is available inside the picker.
+  - **Create + add** creates the playlist and immediately adds the pending song(s).
+- Device playlists support add, remove, rename, delete and local custom artwork.
+- Their artwork stays local; it is never uploaded automatically.
+- Device playlist ids are namespaced away from YouTube browse ids and are never used as YouTube
+  autoplay/radio seeds.
+- The existing fast saved-in-playlists membership index now includes device playlists even while
+  signed out.
 
-### Light theme
-- Reworked Light mode from a mostly beige/white plane into a restrained multi-family palette.
-- Main content remains warm parchment.
-- Sidebar/navigation gains muted sage.
-- Titlebar/playerbar gains blue-grey separation.
-- Primary playback actions use a muted clay/terracotta accent.
-- Toolbars and section furniture use restrained gold/sage/blue/clay detail.
-- Queue/detail surfaces get a cooler paper tint so the lanes are easier to distinguish.
-- The additional colour is static: no animated gradients or new compositor-heavy effects were added.
+When signed in, the normal **New playlist** action still creates a YouTube Music playlist. v2.4
+does not silently convert or upload an existing device playlist.
 
-## Preserved release behavior
-- Audio-only playback through native libmpv.
-- Event-driven playback state with no permanent high-frequency frontend clock.
-- Linux main-WebKit hibernation during background playback.
-- MPRIS, hardware media keys and Ryoku shell controls during background playback.
-- Five-minute tray-only idle exit when nothing is playing.
-- Explicit Quit teardown for playback, MPRIS and integrations.
-- Stable Home DOM; physical Home virtualization remains disabled.
-- Mini-player, lyrics, queue and release-performance safeguards from v2.2.
+## Custom Discord "Listening to …" title
+
+- Settings → General now includes **Discord presence title**.
+- The default remains **Music**.
+- A custom 2–128 character value changes the activity label Discord renders as
+  **Listening to <your text>**.
+- Changing only this title invalidates the Rich Presence dedup state and refreshes the active card
+  without restarting playback.
+- Ryotunes' Discord application/client identity remains fixed; this setting changes vanity text,
+  not which application owns the presence.
+- Existing connection backoff, disabled-mode parking, send throttling and Quit teardown remain in
+  place.
+
+## Performance and lifecycle preserved
+
+- Audio playback remains native through libmpv.
+- Main WebKit hibernation during background playback remains intact.
+- MPRIS, hardware media keys, Ryoku shell controls and tray playback remain native.
+- No permanent high-frequency frontend timer was added for Radio, playlists or Discord title
+  updates.
+- Five-minute tray-only idle exit remains unchanged when nothing is playing.
+- Explicit Quit still tears down playback, MPRIS and integrations immediately.
+- Home retains its stable non-virtualized section architecture and bounded artwork pipeline.
+- Live Ryoku theme updates remain event-driven rather than polled.
 
 ## Packaging
 
-Field-tested on Ryoku/CachyOS with live theme switching, startup geometry and replacement-package migration verified.\n\nThe v2.3 replacement package identity is **`ryotunes-v2.3 2.3.0-1`**.
+The v2.4 replacement package identity is **`ryotunes-v2.4 2.4.0-1`**.
 
-It keeps `ryoku-desktop` installed, preserves the genuine stock Ryotunes entry points for rollback, installs the custom binary under `/usr/lib/ryotunes-v2.3/ryotunes`, exposes one normal `/usr/bin/ryotunes` route and desktop launcher, and installs the managed Ryoku window rule.
+It keeps `ryoku-desktop` installed, preserves the genuine stock Ryotunes entry points for rollback,
+installs the custom binary under `/usr/lib/ryotunes-v2.4/ryotunes`, exposes one normal
+`/usr/bin/ryotunes` route and desktop launcher, and installs the managed Ryoku window rule.
+
+The v2.4 installer recognizes v2.3 as a previous custom package rather than stock, removes the old
+custom package after installing v2.4, then reasserts the v2.4 replacement route so the previous
+uninstall hook cannot leave the stock launcher active.
