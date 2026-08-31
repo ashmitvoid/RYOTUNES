@@ -72,6 +72,25 @@ BACKUP="$STATE/stock"
 [[ -f "$TEMPLATE" ]] || { echo "Ryotunes desktop template is missing: $TEMPLATE" >&2; exit 1; }
 mkdir -p "$BACKUP"
 
+# When v2.4 is installed on top of an older custom package, the live /usr/bin and desktop entry
+# are custom too, so they must never be mistaken for stock. Adopt the genuine stock backup that
+# the previous replacement package already captured before that package is removed.
+adopt_previous_backup() {
+  local prev
+  for prev in     /var/lib/ryotunes-v2.3/stock     /var/lib/ryotunes-v2.2/stock     /var/lib/ryotunes-v2.1/stock     /var/lib/ryotunes-v2.0/stock     /var/lib/ryotunes-v1.9/stock     /var/lib/ryotunes-v1.8/stock     /var/lib/ryotunes-v1.7/stock     /var/lib/ryotunes-v1.6/stock     /var/lib/ryotunes-v1.5/stock     /var/lib/ryotunes-v1.4/stock; do
+    if [[ ! -e "$BACKUP/ryotunes" && ! -L "$BACKUP/ryotunes" ]]        && [[ -e "$prev/ryotunes" || -L "$prev/ryotunes" ]]; then
+      cp -a "$prev/ryotunes" "$BACKUP/ryotunes"
+    fi
+    if [[ ! -f "$BACKUP/ryotunes.desktop" && -f "$prev/ryotunes.desktop" ]]; then
+      cp -a "$prev/ryotunes.desktop" "$BACKUP/ryotunes.desktop"
+    fi
+    if [[ ( -e "$BACKUP/ryotunes" || -L "$BACKUP/ryotunes" )        && -f "$BACKUP/ryotunes.desktop" ]]; then
+      break
+    fi
+  done
+}
+adopt_previous_backup
+
 is_known_custom_bin() {
   local resolved
   resolved="$(readlink -f "$TARGET_BIN" 2>/dev/null || true)"
@@ -169,6 +188,7 @@ url='https://github.com/ashmitvoid/RYOTUNES'
 license=('GPL-3.0-or-later')
 depends=('webkit2gtk-4.1' 'libappindicator-gtk3' 'mpv' 'openssl' 'librsvg' 'desktop-file-utils' 'hicolor-icon-theme' 'xdg-utils')
 provides=('ryotunes=2.4.0')
+conflicts=('ryotunes-v2.3' 'ryotunes-v2.2' 'ryotunes-v2.1' 'ryotunes-v2.0')
 install='ryotunes-v2.4.install'
 source=('ryotunes-v2.4' 'ryotunes' 'ryotunes-v2.4-sync' 'ryotunes.desktop' 'activate-replacement' 'deactivate-replacement' '99-ryotunes-v2.4-replacement.hook' 'ryotunes-v2.4.install' 'LICENSE' 'README.md' 'RELEASE_NOTES.md' 'UPSTREAM.md' 'RyotunesBarWidget.qml' 'QUICKSHELL_README.md' 'icon32.png' 'icon64.png' 'icon128.png' 'icon256.png' 'icon512.png' 'ryotunes-window-rule.lua')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
