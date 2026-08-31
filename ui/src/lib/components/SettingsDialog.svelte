@@ -393,7 +393,7 @@
 						<div class="mt-3 flex max-w-xl items-center gap-2">
 							<Input
 								bind:value={discordNameInput}
-								maxlength="128"
+								maxlength={128}
 								placeholder="Music"
 								aria-label="Discord presence title"
 							/>
