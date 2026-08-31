@@ -815,15 +815,7 @@ impl AppState {
             crate::radio::count_click(&uuid).await;
         });
 
-        self.play_tracks(
-            vec![item],
-            Some(0),
-            None,
-            Some("Live Radio".into()),
-            false,
-            None,
-        )
-        .await;
+        self.play_tracks(vec![item], Some(0), None, Some("Live Radio".into()), false, None).await;
         Ok(())
     }
 
