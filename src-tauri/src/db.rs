@@ -955,10 +955,7 @@ mod tests {
         );
         assert_eq!(
             d.local_playlist_track_json(id),
-            vec![
-                r#"{"video_id":"a"}"#.to_string(),
-                r#"{"video_id":"b"}"#.to_string()
-            ],
+            vec![r#"{"video_id":"a"}"#.to_string(), r#"{"video_id":"b"}"#.to_string()],
             "insertion order is stable"
         );
 
