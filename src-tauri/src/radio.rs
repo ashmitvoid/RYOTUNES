@@ -254,6 +254,27 @@ mod tests {
     }
 
     #[test]
+    fn radio_browser_input_serializes_to_camel_case_for_the_ui() {
+        let station: RadioStation = serde_json::from_value(serde_json::json!({
+            "stationuuid": "station-1",
+            "name": "Example",
+            "url_resolved": "https://example.test/live",
+            "countrycode": "IN"
+        }))
+        .unwrap();
+        assert_eq!(station.station_uuid, "station-1");
+        assert_eq!(station.stream_url, "https://example.test/live");
+        assert_eq!(station.country_code, "IN");
+
+        let json = serde_json::to_value(&station).unwrap();
+        assert_eq!(json["stationUuid"], "station-1");
+        assert_eq!(json["streamUrl"], "https://example.test/live");
+        assert_eq!(json["countryCode"], "IN");
+        assert!(json.get("stationuuid").is_none());
+        assert!(json.get("url_resolved").is_none());
+    }
+
+    #[test]
     fn radio_song_ids_are_namespaced() {
         let station = RadioStation {
             station_uuid: "id".into(),
