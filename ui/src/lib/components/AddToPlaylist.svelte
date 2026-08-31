@@ -140,7 +140,6 @@
 							bind:value={newTitle}
 							maxlength="150"
 							placeholder="Playlist name"
-							autofocus
 						/>
 						<button
 							type="submit"
