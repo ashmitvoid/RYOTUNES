@@ -25,11 +25,11 @@ const USER_AGENT: &str = "Ryotunes/2.4 (+https://github.com/ashmitvoid/ryotunes)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RadioStation {
-    #[serde(rename = "stationuuid")]
+    #[serde(alias = "stationuuid")]
     pub station_uuid: String,
     #[serde(default)]
     pub name: String,
-    #[serde(rename = "url_resolved", default)]
+    #[serde(alias = "url_resolved", default)]
     pub stream_url: String,
     #[serde(default)]
     pub url: String,
@@ -39,7 +39,7 @@ pub struct RadioStation {
     pub favicon: String,
     #[serde(default)]
     pub country: String,
-    #[serde(rename = "countrycode", default)]
+    #[serde(alias = "countrycode", default)]
     pub country_code: String,
     #[serde(default)]
     pub tags: String,
@@ -72,16 +72,17 @@ fn client() -> Result<reqwest::Client, String> {
 
 async fn mirrors(client: &reqwest::Client) -> Vec<String> {
     let mut out = match client.get(DISCOVERY_URL).send().await {
-        Ok(response) if response.status().is_success() => response
-            .json::<Vec<Mirror>>()
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|m| {
-                let host = m.name.trim().trim_end_matches('.');
-                (!host.is_empty()).then(|| format!("https://{host}"))
-            })
-            .collect::<Vec<_>>(),
+        Ok(response) if response.status().is_success() => match response.bytes().await {
+            Ok(bytes) => serde_json::from_slice::<Vec<Mirror>>(&bytes)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|m| {
+                    let host = m.name.trim().trim_end_matches('.');
+                    (!host.is_empty()).then(|| format!("https://{host}"))
+                })
+                .collect::<Vec<_>>(),
+            Err(_) => Vec::new(),
+        },
         _ => Vec::new(),
     };
 
@@ -100,9 +101,12 @@ async fn get_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Strin
     for base in mirrors(&client).await {
         let url = format!("{base}{path}");
         match client.get(&url).send().await {
-            Ok(response) if response.status().is_success() => match response.json::<T>().await {
-                Ok(value) => return Ok(value),
-                Err(e) => errors.push(format!("{base}: invalid response ({e})")),
+            Ok(response) if response.status().is_success() => match response.bytes().await {
+                Ok(bytes) => match serde_json::from_slice::<T>(&bytes) {
+                    Ok(value) => return Ok(value),
+                    Err(e) => errors.push(format!("{base}: invalid response ({e})")),
+                },
+                Err(e) => errors.push(format!("{base}: response body ({e})")),
             },
             Ok(response) => errors.push(format!("{base}: HTTP {}", response.status())),
             Err(e) => errors.push(format!("{base}: {e}")),
