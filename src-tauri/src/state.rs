@@ -1825,6 +1825,12 @@ impl AppState {
         }
     }
 
+    pub fn set_discord_name(&self, name: String) {
+        if let Some(d) = &self.discord {
+            d.set_name(name);
+        }
+    }
+
     pub fn discord_status(&self) -> serde_json::Value {
         let enabled = self.db.get_setting("discord_rpc").as_deref() == Some("true");
         let status = if !enabled {
