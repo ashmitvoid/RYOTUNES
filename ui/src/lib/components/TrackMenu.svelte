@@ -83,7 +83,8 @@
 	const isPick = $derived(personal.picks.some((p) => p.id === song.video_id));
 	// Local files and live-radio station ids have no YouTube track identity. Queue/shortcuts may
 	// still use them, but radio seeds, ratings, sharing and YouTube playlist writes must stay hidden.
-	const noYouTubeTrack = $derived(api.isLocalId(song.video_id) || api.isRadioId(song.video_id));
+	const isRadio = $derived(api.isRadioId(song.video_id));
+	const noYouTubeTrack = $derived(api.isLocalId(song.video_id) || isRadio);
 </script>
 
 <button
@@ -180,24 +181,26 @@
 				<HugeiconsIcon icon={Vynil02Icon} class="h-4 w-4" /> Go to album
 			</button>
 		{/if}
-		<button
-			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-			onclick={(e) =>
-				run(e, () =>
-					isPick
-						? removePick(song.video_id)
-						: addPick({
-							kind: 'song',
-							id: song.video_id,
-							title: song.title,
-							subtitle: song.artists,
-							thumbnail: song.thumbnail
-						})
-				)}
-		>
-			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" />
-			{isPick ? 'Remove from shortcuts' : 'Add to shortcuts'}
-		</button>
+		{#if !isRadio}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={(e) =>
+					run(e, () =>
+						isPick
+							? removePick(song.video_id)
+							: addPick({
+								kind: 'song',
+								id: song.video_id,
+								title: song.title,
+								subtitle: song.artists,
+								thumbnail: song.thumbnail
+							})
+					)}
+			>
+				<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" />
+				{isPick ? 'Remove from shortcuts' : 'Add to shortcuts'}
+			</button>
+		{/if}
 		{#if !noYouTubeTrack}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
