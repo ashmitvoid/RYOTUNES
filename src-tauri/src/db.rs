@@ -107,6 +107,11 @@ impl Db {
             ) WITHOUT ROWID;
             CREATE INDEX IF NOT EXISTS local_playlist_tracks_order
                 ON local_playlist_tracks(playlist_id, position);
+            CREATE TABLE IF NOT EXISTS radio_station_cache (
+                station_id   TEXT PRIMARY KEY,
+                station_json TEXT NOT NULL,
+                updated_at   INTEGER NOT NULL
+            );
             "#,
         )?;
         // Migrate databases that predate the loudness_db column. Errors ("duplicate column")
@@ -235,6 +240,39 @@ impl Db {
             }
         }
         out
+    }
+
+    // --- radio station cache -----------------------------------------------------------------
+
+    /// Keep enough station metadata to resume a persisted live-radio queue after a restart.
+    /// This is metadata only, not audio, and is bounded so browsing radio cannot grow the DB.
+    pub fn put_radio_station(&self, station_id: &str, station_json: &str) {
+        let conn = self.0.lock().unwrap();
+        let _ = conn.execute(
+            "INSERT INTO radio_station_cache(station_id, station_json, updated_at)
+             VALUES(?1, ?2, ?3)
+             ON CONFLICT(station_id) DO UPDATE SET
+                station_json = excluded.station_json,
+                updated_at = excluded.updated_at",
+            rusqlite::params![station_id, station_json, now_secs()],
+        );
+        let _ = conn.execute(
+            "DELETE FROM radio_station_cache
+             WHERE station_id NOT IN (
+                SELECT station_id FROM radio_station_cache ORDER BY updated_at DESC LIMIT 64
+             )",
+            [],
+        );
+    }
+
+    pub fn get_radio_station(&self, station_id: &str) -> Option<String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT station_json FROM radio_station_cache WHERE station_id = ?1",
+            [station_id],
+            |r| r.get(0),
+        )
+        .ok()
     }
 
     // --- stream url cache -------------------------------------------------------------------
