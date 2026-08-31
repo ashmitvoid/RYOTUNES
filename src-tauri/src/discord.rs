@@ -735,7 +735,12 @@ mod tests {
         assert_eq!(p.plan(), Act::Push, "with the length known, push immediately");
 
         // That single push carries the bar; nothing further is pending.
-        p.sent = Some(Sent { video_id: "new".into(), start_ms: now_ms(), duration: 185.0 });
+        p.sent = Some(Sent {
+            video_id: "new".into(),
+            name: p.name.clone(),
+            start_ms: now_ms(),
+            duration: 185.0,
+        });
         p.last_send = Some(Instant::now());
         assert_eq!(p.plan(), Act::Idle, "one push per track change, not two");
     }
