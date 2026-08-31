@@ -81,9 +81,9 @@
 
 	const rated = $derived(ratingOf(song));
 	const isPick = $derived(personal.picks.some((p) => p.id === song.video_id));
-	// A local file has no YouTube identity: liking it or putting it in a YTM playlist is not a
-	// thing, so those items don't show. Queue, shortcuts and go-to-album work normally.
-	const isLocal = $derived(api.isLocalId(song.video_id));
+	// Local files and live-radio station ids have no YouTube track identity. Queue/shortcuts may
+	// still use them, but radio seeds, ratings, sharing and YouTube playlist writes must stay hidden.
+	const noYouTubeTrack = $derived(api.isLocalId(song.video_id) || api.isRadioId(song.video_id));
 </script>
 
 <button
@@ -130,7 +130,7 @@
 			</button>
 		{/if}
 		
-		{#if !isLocal}
+		{#if !noYouTubeTrack}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={(e) => run(e, () => startRadio('song', song.video_id, song.title))}
@@ -139,7 +139,7 @@
 			</button>
 		{/if}
 		
-		{#if !isLocal}
+		{#if !noYouTubeTrack}
 			<button
 				class="w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10 {linksOnly
 					? 'flex lg:hidden'
@@ -172,7 +172,7 @@
 			</button>
 		{/if}
 		
-		{#if song.album_id && !isLocal}
+		{#if song.album_id && !noYouTubeTrack}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={(e) => run(e, () => goto(`/album/${encodeURIComponent(song.album_id!)}`))}
@@ -198,7 +198,7 @@
 			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" />
 			{isPick ? 'Remove from shortcuts' : 'Add to shortcuts'}
 		</button>
-		{#if !isLocal}
+		{#if !noYouTubeTrack}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={(e) =>
@@ -223,7 +223,7 @@
 				<HugeiconsIcon icon={PreferenceVerticalIcon} class="h-4 w-4" /> Advanced
 			</button>
 		{/if}
-		{#if onAdd && !isLocal}
+		{#if onAdd && !noYouTubeTrack}
 			<button
 				class="w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10 {linksOnly
 					? 'flex lg:hidden'
