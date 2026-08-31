@@ -243,13 +243,14 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
 /// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
 /// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 13] = [
+const UI_SETTINGS: [&str; 14] = [
     "volume",
     "proxy",
     "quality",
     "enable_history",
     "disabled_stream_clients",
     "discord_rpc",
+    "discord_presence_name",
     "close_to_tray",
     "autostart",
     "autoplay",
@@ -323,6 +324,13 @@ pub async fn set_setting(
             return Err("autostart registration did not reach the requested state".into());
         }
         state.db.set_setting("autostart", if actual { "true" } else { "false" });
+        return Ok(());
+    }
+
+    if key == "discord_presence_name" {
+        let name = crate::discord::normalize_presence_name(&value)?;
+        state.db.set_setting(&key, &name);
+        state.set_discord_name(name);
         return Ok(());
     }
 
