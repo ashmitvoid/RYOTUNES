@@ -176,6 +176,12 @@ export const LOCAL_SONG_PREFIX = 'LOCAL:';
 export const LOCAL_ALBUM_PREFIX = 'LOCALALBUM:';
 /** An artist on this disk. Renders through the album route: same page, no YouTube channel. */
 export const LOCAL_ARTIST_PREFIX = 'LOCALARTIST:';
+export const LOCAL_PLAYLIST_PREFIX = 'RYOTUNES_LOCAL_PLAYLIST:';
+export const RADIO_ID_PREFIX = 'RYOTUNES_RADIO:';
+export const isLocalPlaylistId = (id: string | undefined | null): boolean =>
+	!!id && id.startsWith(LOCAL_PLAYLIST_PREFIX);
+export const isRadioId = (id: string | undefined | null): boolean =>
+	!!id && id.startsWith(RADIO_ID_PREFIX);
 export const isLocalId = (id: string | undefined | null): boolean =>
 	!!id &&
 	(id.startsWith(LOCAL_SONG_PREFIX) ||
@@ -191,6 +197,22 @@ export interface LocalLibrary {
 	/** Song/album/artist ids that were in the library but are gone from disk since the last scan. */
 	removed: string[];
 }
+export interface RadioStation {
+	stationUuid: string;
+	name: string;
+	streamUrl: string;
+	url?: string;
+	homepage?: string;
+	favicon?: string;
+	country?: string;
+	countryCode?: string;
+	tags?: string;
+	codec?: string;
+	bitrate?: number;
+	votes?: number;
+	clickcount?: number;
+}
+
 
 /** The orders YouTube itself can put a playlist in — everything in `SortKey` but our own `plays`. */
 export type ServerSort = 'default' | 'newest' | 'oldest' | 'title' | 'artist' | 'album' | 'top';
@@ -454,6 +476,11 @@ export const playPlaylist = (
  */
 export const startRadio = (kind: 'song' | 'artist' | 'album' | 'playlist', id: string, name?: string) =>
 	invoke<void>('start_radio', { kind, id, name });
+/** Internet Radio directory. Rust handles mirror discovery, timeouts and validation. */
+export const radioStations = (query = '', offset = 0, limit = 36) =>
+	invoke<RadioStation[]>('radio_stations', { query, offset, limit });
+export const playRadioStation = (station: RadioStation) =>
+	invoke<void>('play_radio_station', { station });
 export interface PlaylistTransfer { title: string; items: SongItem[]; }
 export const exportPlaylistFile = (path: string, title: string, items: SongItem[]) =>
 	invoke<void>('export_playlist_file', { path, title, items });
@@ -478,6 +505,8 @@ export const rate = (videoId: string, rating: Rating) => invoke<void>('rate', { 
 /** `false` = the playlist already had this track, so YouTube added nothing. */
 export const addToPlaylist = (playlistId: string, videoId: string) =>
 	invoke<boolean>('add_to_playlist', { playlistId, videoId });
+export const addToLocalPlaylist = (playlistId: string, item: SongItem) =>
+	invoke<boolean>('add_to_local_playlist', { playlistId, item });
 export const removeFromPlaylist = (playlistId: string, videoId: string, setVideoId: string) =>
 	invoke<void>('remove_from_playlist', { playlistId, videoId, setVideoId });
 export const createPlaylist = (title: string) => invoke<string>('create_playlist', { title });
