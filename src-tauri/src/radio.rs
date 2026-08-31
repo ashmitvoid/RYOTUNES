@@ -120,9 +120,7 @@ async fn get_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Strin
 }
 
 fn http_url(value: &str) -> bool {
-    reqwest::Url::parse(value)
-        .ok()
-        .is_some_and(|url| matches!(url.scheme(), "http" | "https"))
+    reqwest::Url::parse(value).ok().is_some_and(|url| matches!(url.scheme(), "http" | "https"))
 }
 
 pub fn normalize_station(mut station: RadioStation) -> Option<RadioStation> {
@@ -140,7 +138,8 @@ pub fn normalize_station(mut station: RadioStation) -> Option<RadioStation> {
     if !http_url(&station.stream_url) {
         station.stream_url = station.url.clone();
     }
-    if station.station_uuid.is_empty() || station.name.is_empty() || !http_url(&station.stream_url) {
+    if station.station_uuid.is_empty() || station.name.is_empty() || !http_url(&station.stream_url)
+    {
         return None;
     }
     if !station.homepage.is_empty() && !http_url(&station.homepage) {
@@ -154,7 +153,11 @@ pub fn normalize_station(mut station: RadioStation) -> Option<RadioStation> {
 
 /// Top stations for an empty query, or a name search otherwise. Limit is intentionally bounded:
 /// Radio Browser can return tens of thousands of rows and the Radio page never needs them at once.
-pub async fn stations(query: Option<&str>, offset: usize, limit: usize) -> Result<Vec<RadioStation>, String> {
+pub async fn stations(
+    query: Option<&str>,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<RadioStation>, String> {
     let limit = limit.clamp(1, 50);
     let offset = offset.min(10_000);
     let query = query.unwrap_or_default().trim();
@@ -242,7 +245,11 @@ mod tests {
         assert_eq!(good.codec, "MP3");
         assert!(good.homepage.is_empty());
 
-        let bad = normalize_station(RadioStation { stream_url: "file:///tmp/a".into(), url: String::new(), ..good });
+        let bad = normalize_station(RadioStation {
+            stream_url: "file:///tmp/a".into(),
+            url: String::new(),
+            ..good
+        });
         assert!(bad.is_none());
     }
 
