@@ -6,16 +6,16 @@ OUT="${1:-$ROOT/dist}"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 
-VERSION="2.3.0"
+VERSION="2.4.0"
 PKGREL="1"
-PKGNAME="ryotunes-v2.3"
-BINNAME="ryotunes-v2.3"
-SYNCNAME="ryotunes-v2.3-sync"
-ICONNAME="ryotunes-v2.3"
-LIBDIR="/usr/lib/ryotunes-v2.3"
-SHAREDIR="/usr/share/ryotunes-v2.3"
-HOOKNAME="99-ryotunes-v2.3-replacement.hook"
-INSTALLSCRIPT="ryotunes-v2.3.install"
+PKGNAME="ryotunes-v2.4"
+BINNAME="ryotunes-v2.4"
+SYNCNAME="ryotunes-v2.4-sync"
+ICONNAME="ryotunes-v2.4"
+LIBDIR="/usr/lib/ryotunes-v2.4"
+SHAREDIR="/usr/share/ryotunes-v2.4"
+HOOKNAME="99-ryotunes-v2.4-replacement.hook"
+INSTALLSCRIPT="ryotunes-v2.4.install"
 
 RYO="$ROOT/target/release/ryotunes"
 SYNC="$ROOT/target/release/ryotunes-sync"
@@ -25,7 +25,7 @@ for cmd in makepkg bsdtar zstd zip sha256sum; do
   command -v "$cmd" >/dev/null || { echo "missing command: $cmd" >&2; exit 1; }
 done
 
-WORK="$(mktemp -d -t ryotunes-v2.3-package-XXXXXX)"
+WORK="$(mktemp -d -t ryotunes-v2.4-package-XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 PKGWORK="$WORK/package"
 mkdir -p "$PKGWORK"
@@ -34,7 +34,7 @@ install -Dm755 "$RYO" "$PKGWORK/ryotunes"
 cat > "$PKGWORK/$BINNAME" <<'WRAP'
 #!/usr/bin/env bash
 set -e
-exec /usr/lib/ryotunes-v2.3/ryotunes "$@"
+exec /usr/lib/ryotunes-v2.4/ryotunes "$@"
 WRAP
 chmod 755 "$PKGWORK/$BINNAME"
 install -Dm755 "$SYNC" "$PKGWORK/$SYNCNAME"
@@ -60,12 +60,12 @@ cp "$ROOT/src-tauri/icons/icon.png" "$PKGWORK/icon512.png"
 cat > "$PKGWORK/activate-replacement" <<'ACTIVATE'
 #!/usr/bin/env bash
 set -euo pipefail
-LIBDIR=/usr/lib/ryotunes-v2.3
+LIBDIR=/usr/lib/ryotunes-v2.4
 REALBIN="$LIBDIR/ryotunes"
-TEMPLATE=/usr/share/ryotunes-v2.3/ryotunes.desktop
+TEMPLATE=/usr/share/ryotunes-v2.4/ryotunes.desktop
 TARGET_BIN=/usr/bin/ryotunes
 TARGET_DESKTOP=/usr/share/applications/ryotunes.desktop
-STATE=/var/lib/ryotunes-v2.3
+STATE=/var/lib/ryotunes-v2.4
 BACKUP="$STATE/stock"
 
 [[ -x "$REALBIN" ]] || { echo "Ryotunes replacement binary is missing: $REALBIN" >&2; exit 1; }
@@ -75,7 +75,7 @@ mkdir -p "$BACKUP"
 is_known_custom_bin() {
   local resolved
   resolved="$(readlink -f "$TARGET_BIN" 2>/dev/null || true)"
-  [[ "$resolved" == "$REALBIN" ]] || [[ "$resolved" =~ ^/usr/lib/ryotunes-v(1\.[4-9]|2\.[0-2]|2[0-4])/ryotunes$ ]]
+  [[ "$resolved" == "$REALBIN" ]] || [[ "$resolved" =~ ^/usr/lib/ryotunes-v(1\.[4-9]|2\.[0-3]|2[0-4])/ryotunes$ ]]
 }
 is_custom_desktop() {
   [[ -f "$TARGET_DESKTOP" ]] && grep -q '^X-Ryotunes-Replacement=true$' "$TARGET_DESKTOP"
@@ -100,16 +100,16 @@ chmod 755 "$PKGWORK/activate-replacement"
 cat > "$PKGWORK/deactivate-replacement" <<'DEACTIVATE'
 #!/usr/bin/env bash
 set -euo pipefail
-REALBIN=/usr/lib/ryotunes-v2.3/ryotunes
+REALBIN=/usr/lib/ryotunes-v2.4/ryotunes
 TARGET_BIN=/usr/bin/ryotunes
 TARGET_DESKTOP=/usr/share/applications/ryotunes.desktop
-BACKUP=/var/lib/ryotunes-v2.3/stock
+BACKUP=/var/lib/ryotunes-v2.4/stock
 
 is_our_bin() {
   [[ -L "$TARGET_BIN" ]] && [[ "$(readlink -f "$TARGET_BIN" 2>/dev/null || true)" == "$REALBIN" ]]
 }
 is_our_desktop() {
-  [[ -f "$TARGET_DESKTOP" ]]     && grep -q '^X-Ryotunes-Replacement=true$' "$TARGET_DESKTOP"     && grep -q '^Icon=ryotunes-v2.3$' "$TARGET_DESKTOP"
+  [[ -f "$TARGET_DESKTOP" ]]     && grep -q '^X-Ryotunes-Replacement=true$' "$TARGET_DESKTOP"     && grep -q '^Icon=ryotunes-v2.4$' "$TARGET_DESKTOP"
 }
 
 if is_our_bin; then
@@ -138,60 +138,60 @@ Target = usr/bin/ryotunes
 Target = usr/share/applications/ryotunes.desktop
 
 [Action]
-Description = Re-activating Ryotunes v2.3 after a Ryoku package update
+Description = Re-activating Ryotunes v2.4 after a Ryoku package update
 When = PostTransaction
-Exec = /usr/lib/ryotunes-v2.3/activate-replacement
+Exec = /usr/lib/ryotunes-v2.4/activate-replacement
 HOOK
 
 cat > "$PKGWORK/$INSTALLSCRIPT" <<'INSTALL'
 post_install() {
-  /usr/lib/ryotunes-v2.3/activate-replacement || return 1
+  /usr/lib/ryotunes-v2.4/activate-replacement || return 1
 }
 post_upgrade() {
-  /usr/lib/ryotunes-v2.3/activate-replacement || return 1
+  /usr/lib/ryotunes-v2.4/activate-replacement || return 1
 }
 pre_remove() {
-  /usr/lib/ryotunes-v2.3/deactivate-replacement || true
+  /usr/lib/ryotunes-v2.4/deactivate-replacement || true
 }
 post_remove() {
-  rm -rf /var/lib/ryotunes-v2.3
+  rm -rf /var/lib/ryotunes-v2.4
   command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 }
 INSTALL
 
 cat > "$PKGWORK/PKGBUILD" <<'PKG'
-pkgname=ryotunes-v2.3
-pkgver=2.3.0
+pkgname=ryotunes-v2.4
+pkgver=2.4.0
 pkgrel=1
-pkgdesc='Ryotunes v2.3 - Ryoku replacement Linux desktop music client'
+pkgdesc='Ryotunes v2.4 - Ryoku replacement Linux desktop music client'
 arch=('x86_64')
 url='https://github.com/ashmitvoid/RYOTUNES'
 license=('GPL-3.0-or-later')
 depends=('webkit2gtk-4.1' 'libappindicator-gtk3' 'mpv' 'openssl' 'librsvg' 'desktop-file-utils' 'hicolor-icon-theme' 'xdg-utils')
-provides=('ryotunes=2.3.0')
-install='ryotunes-v2.3.install'
-source=('ryotunes-v2.3' 'ryotunes' 'ryotunes-v2.3-sync' 'ryotunes.desktop' 'activate-replacement' 'deactivate-replacement' '99-ryotunes-v2.3-replacement.hook' 'ryotunes-v2.3.install' 'LICENSE' 'README.md' 'RELEASE_NOTES.md' 'UPSTREAM.md' 'RyotunesBarWidget.qml' 'QUICKSHELL_README.md' 'icon32.png' 'icon64.png' 'icon128.png' 'icon256.png' 'icon512.png' 'ryotunes-window-rule.lua')
+provides=('ryotunes=2.4.0')
+install='ryotunes-v2.4.install'
+source=('ryotunes-v2.4' 'ryotunes' 'ryotunes-v2.4-sync' 'ryotunes.desktop' 'activate-replacement' 'deactivate-replacement' '99-ryotunes-v2.4-replacement.hook' 'ryotunes-v2.4.install' 'LICENSE' 'README.md' 'RELEASE_NOTES.md' 'UPSTREAM.md' 'RyotunesBarWidget.qml' 'QUICKSHELL_README.md' 'icon32.png' 'icon64.png' 'icon128.png' 'icon256.png' 'icon512.png' 'ryotunes-window-rule.lua')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 package() {
-  install -Dm755 ryotunes-v2.3 "$pkgdir/usr/bin/ryotunes-v2.3"
-  install -Dm755 ryotunes "$pkgdir/usr/lib/ryotunes-v2.3/ryotunes"
-  install -Dm755 ryotunes-v2.3-sync "$pkgdir/usr/bin/ryotunes-v2.3-sync"
-  install -Dm755 activate-replacement "$pkgdir/usr/lib/ryotunes-v2.3/activate-replacement"
-  install -Dm755 deactivate-replacement "$pkgdir/usr/lib/ryotunes-v2.3/deactivate-replacement"
-  install -Dm644 ryotunes.desktop "$pkgdir/usr/share/ryotunes-v2.3/ryotunes.desktop"
-  install -Dm644 99-ryotunes-v2.3-replacement.hook "$pkgdir/usr/share/libalpm/hooks/99-ryotunes-v2.3-replacement.hook"
-  install -Dm644 RyotunesBarWidget.qml "$pkgdir/usr/share/ryotunes-v2.3/quickshell/RyotunesBarWidget.qml"
-  install -Dm644 QUICKSHELL_README.md "$pkgdir/usr/share/doc/ryotunes-v2.3/QUICKSHELL.md"
-  install -Dm644 ryotunes-window-rule.lua "$pkgdir/usr/share/ryotunes-v2.3/ryotunes-window-rule.lua"
-  install -Dm644 icon32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/ryotunes-v2.3.png"
-  install -Dm644 icon64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/ryotunes-v2.3.png"
-  install -Dm644 icon128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/ryotunes-v2.3.png"
-  install -Dm644 icon256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/ryotunes-v2.3.png"
-  install -Dm644 icon512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/ryotunes-v2.3.png"
-  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/ryotunes-v2.3/LICENSE"
-  install -Dm644 README.md "$pkgdir/usr/share/doc/ryotunes-v2.3/README.md"
-  install -Dm644 RELEASE_NOTES.md "$pkgdir/usr/share/doc/ryotunes-v2.3/RELEASE_NOTES.md"
-  install -Dm644 UPSTREAM.md "$pkgdir/usr/share/doc/ryotunes-v2.3/UPSTREAM.md"
+  install -Dm755 ryotunes-v2.4 "$pkgdir/usr/bin/ryotunes-v2.4"
+  install -Dm755 ryotunes "$pkgdir/usr/lib/ryotunes-v2.4/ryotunes"
+  install -Dm755 ryotunes-v2.4-sync "$pkgdir/usr/bin/ryotunes-v2.4-sync"
+  install -Dm755 activate-replacement "$pkgdir/usr/lib/ryotunes-v2.4/activate-replacement"
+  install -Dm755 deactivate-replacement "$pkgdir/usr/lib/ryotunes-v2.4/deactivate-replacement"
+  install -Dm644 ryotunes.desktop "$pkgdir/usr/share/ryotunes-v2.4/ryotunes.desktop"
+  install -Dm644 99-ryotunes-v2.4-replacement.hook "$pkgdir/usr/share/libalpm/hooks/99-ryotunes-v2.4-replacement.hook"
+  install -Dm644 RyotunesBarWidget.qml "$pkgdir/usr/share/ryotunes-v2.4/quickshell/RyotunesBarWidget.qml"
+  install -Dm644 QUICKSHELL_README.md "$pkgdir/usr/share/doc/ryotunes-v2.4/QUICKSHELL.md"
+  install -Dm644 ryotunes-window-rule.lua "$pkgdir/usr/share/ryotunes-v2.4/ryotunes-window-rule.lua"
+  install -Dm644 icon32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/ryotunes-v2.4.png"
+  install -Dm644 icon64.png "$pkgdir/usr/share/icons/hicolor/64x64/apps/ryotunes-v2.4.png"
+  install -Dm644 icon128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/ryotunes-v2.4.png"
+  install -Dm644 icon256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/ryotunes-v2.4.png"
+  install -Dm644 icon512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/ryotunes-v2.4.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/ryotunes-v2.4/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/ryotunes-v2.4/README.md"
+  install -Dm644 RELEASE_NOTES.md "$pkgdir/usr/share/doc/ryotunes-v2.4/RELEASE_NOTES.md"
+  install -Dm644 UPSTREAM.md "$pkgdir/usr/share/doc/ryotunes-v2.4/UPSTREAM.md"
 }
 PKG
 (cd "$PKGWORK" && makepkg --clean --cleanbuild --noconfirm)
@@ -200,7 +200,7 @@ PKGFILE="$(find "$PKGWORK" -maxdepth 1 -name "$PKGNAME-$VERSION-$PKGREL-*.pkg.ta
 
 LIST="$WORK/package-contents.txt"
 bsdtar -tf "$PKGFILE" > "$LIST"
-for path in   'usr/bin/ryotunes-v2.3'   'usr/lib/ryotunes-v2.3/ryotunes'   'usr/share/ryotunes-v2.3/ryotunes.desktop'   'usr/share/ryotunes-v2.3/ryotunes-window-rule.lua'   'usr/share/libalpm/hooks/99-ryotunes-v2.3-replacement.hook'; do
+for path in   'usr/bin/ryotunes-v2.4'   'usr/lib/ryotunes-v2.4/ryotunes'   'usr/share/ryotunes-v2.4/ryotunes.desktop'   'usr/share/ryotunes-v2.4/ryotunes-window-rule.lua'   'usr/share/libalpm/hooks/99-ryotunes-v2.4-replacement.hook'; do
   grep -qx "$path" "$LIST" || { echo "missing package path: $path" >&2; exit 1; }
 done
 if grep -Eq '^usr/bin/ryotunes$|^usr/share/applications/ryotunes(-v[^/]*)?\.desktop$' "$LIST"; then
@@ -215,11 +215,11 @@ FINAL_PKG="$OUT/$(basename "$PKGFILE")"
 PAYLOAD_DIR="$WORK/payload"
 mkdir -p "$PAYLOAD_DIR"
 bsdtar -xf "$FINAL_PKG" -C "$PAYLOAD_DIR" usr
-tar --zstd -C "$PAYLOAD_DIR" -cf "$OUT/ryotunes-v2.3.0-linux-x86_64.tar.zst" usr
+tar --zstd -C "$PAYLOAD_DIR" -cf "$OUT/ryotunes-v2.4.0-linux-x86_64.tar.zst" usr
 
 # One-click-ish end-user folder. install.sh keeps old custom packages out of the way and reasserts
-# v2.3 after their uninstall hooks restore stock.
-BUNDLE="$WORK/Ryotunes-v2.3-Ryoku-x86_64"
+# v2.4 after their uninstall hooks restore stock.
+BUNDLE="$WORK/Ryotunes-v2.4-Ryoku-x86_64"
 mkdir -p "$BUNDLE"
 cp "$FINAL_PKG" "$BUNDLE/"
 cp "$ROOT/scripts/ryoku-window-rule.sh" "$BUNDLE/ryoku-window-rule.sh"
@@ -227,19 +227,19 @@ cat > "$BUNDLE/install.sh" <<'BINSTALL'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PKG="$(find "$HERE" -maxdepth 1 -name 'ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst' -print -quit)"
-[[ -n "$PKG" ]] || { echo "Ryotunes v2.3 package not found beside install.sh" >&2; exit 1; }
+PKG="$(find "$HERE" -maxdepth 1 -name 'ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst' -print -quit)"
+[[ -n "$PKG" ]] || { echo "Ryotunes v2.4 package not found beside install.sh" >&2; exit 1; }
 
 sudo pacman -U --needed "$PKG"
-for old in ryotunes-v2.2 ryotunes-v2.1 ryotunes-v2.0 ryotunes-v20 ryotunes-v21 ryotunes-v22 ryotunes-v23 ryotunes-v24 ryotunes-v1.4 ryotunes-v1.5 ryotunes-v1.6 ryotunes-v1.7 ryotunes-v1.8 ryotunes-v1.9; do
+for old in ryotunes-v2.3 ryotunes-v2.2 ryotunes-v2.1 ryotunes-v2.0 ryotunes-v20 ryotunes-v21 ryotunes-v22 ryotunes-v23 ryotunes-v24 ryotunes-v1.4 ryotunes-v1.5 ryotunes-v1.6 ryotunes-v1.7 ryotunes-v1.8 ryotunes-v1.9; do
   if pacman -Q "$old" >/dev/null 2>&1; then
     sudo pacman -R --noconfirm "$old"
   fi
 done
-sudo /usr/lib/ryotunes-v2.3/activate-replacement
+sudo /usr/lib/ryotunes-v2.4/activate-replacement
 "$HERE/ryoku-window-rule.sh" install
 command -v update-desktop-database >/dev/null 2>&1 && sudo update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
-echo "Ryotunes v2.3 installed. Launch it with: ryotunes"
+echo "Ryotunes v2.4 installed. Launch it with: ryotunes"
 BINSTALL
 chmod 755 "$BUNDLE/install.sh" "$BUNDLE/ryoku-window-rule.sh"
 
@@ -248,18 +248,18 @@ cat > "$BUNDLE/uninstall.sh" <<'BUNINSTALL'
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 "$HERE/ryoku-window-rule.sh" remove || true
-sudo pacman -Rns ryotunes-v2.3
+sudo pacman -Rns ryotunes-v2.4
 BUNINSTALL
 chmod 755 "$BUNDLE/uninstall.sh"
 
 cat > "$BUNDLE/README.txt" <<'BREADME'
-Ryotunes v2.3 for Ryoku / CachyOS / Arch x86_64
+Ryotunes v2.4 for Ryoku / CachyOS / Arch x86_64
 
 Recommended:
   ./install.sh
 
 Manual package install:
-  sudo pacman -U ./ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst
+  sudo pacman -U ./ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst
 
 The installer keeps ryoku-desktop installed and replaces only the stock Ryotunes entry points.
 BREADME
@@ -268,12 +268,12 @@ BREADME
   cd "$BUNDLE"
   sha256sum "$(basename "$FINAL_PKG")" > SHA256SUMS
 )
-(cd "$WORK" && zip -qr "$OUT/Ryotunes-v2.3-Ryoku-x86_64.zip" "$(basename "$BUNDLE")")
+(cd "$WORK" && zip -qr "$OUT/Ryotunes-v2.4-Ryoku-x86_64.zip" "$(basename "$BUNDLE")")
 
 (
   cd "$OUT"
-  sha256sum     "$(basename "$FINAL_PKG")"     ryotunes-v2.3.0-linux-x86_64.tar.zst     Ryotunes-v2.3-Ryoku-x86_64.zip     > SHA256SUMS-v2.3.0.txt
+  sha256sum     "$(basename "$FINAL_PKG")"     ryotunes-v2.4.0-linux-x86_64.tar.zst     Ryotunes-v2.4-Ryoku-x86_64.zip     > SHA256SUMS-v2.4.0.txt
 )
 
 echo "release assets written to $OUT"
-cat "$OUT/SHA256SUMS-v2.3.0.txt"
+cat "$OUT/SHA256SUMS-v2.4.0.txt"
