@@ -267,7 +267,12 @@ pub fn run() {
             taskbar::init(&handle);
 
             // Discord rich presence — off unless the user opted in; parks on its channel until then.
-            let discord = discord::spawn(db.get_setting("discord_rpc").as_deref() == Some("true"));
+            // The activity label is local vanity text; the fixed APP_ID remains Ryotunes' identity.
+            let discord = discord::spawn(
+                db.get_setting("discord_rpc").as_deref() == Some("true"),
+                db.get_setting("discord_presence_name")
+                    .unwrap_or_else(|| discord::DEFAULT_PRESENCE_NAME.into()),
+            );
 
             // Last.fm scrobbler — parks until a session key exists (titlebar connect flow).
             let lastfm =
