@@ -36,6 +36,11 @@ pub const REDISCOVER_ID: &str = "RYOTUNES_REDISCOVER";
 pub const RECENTLY_PLAYED_WINDOW_SECS: i64 = 7 * 24 * 60 * 60;
 pub const REDISCOVER_OLDER_THAN_SECS: i64 = 14 * 24 * 60 * 60;
 pub const SMART_PLAYLIST_LIMIT: usize = 40;
+pub const LOCAL_PLAYLIST_PREFIX: &str = "RYOTUNES_LOCAL_PLAYLIST:";
+
+pub fn is_local_playlist_id(id: &str) -> bool {
+    id.starts_with(LOCAL_PLAYLIST_PREFIX)
+}
 
 pub fn is_smart_playlist_id(id: &str) -> bool {
     id == ON_REPEAT_ID || id == RECENTLY_PLAYED_ID || id == REDISCOVER_ID
@@ -720,6 +725,17 @@ impl AppState {
                 ResolveError::LocalMissing(path.to_owned())
             });
         }
+        // Live radio is already a direct stream URL. The station record is cached separately so
+        // a one-item radio queue can be restored after a restart without treating its synthetic id
+        // as a YouTube video id.
+        if crate::radio::is_radio_id(video_id) {
+            let station = self
+                .db
+                .get_radio_station(video_id)
+                .and_then(|json| serde_json::from_str::<crate::radio::RadioStation>(&json).ok())
+                .ok_or_else(|| ResolveError::AllClientsFailed(video_id.to_owned()))?;
+            return Ok(crate::radio::playback_data(&station));
+        }
         // Latency cache first (UI state) — honor expiry, never a source of truth.
         // 60s safety margin: a URL that expires mid-load/mid-buffer fails as Raw(-13).
         let now = now_secs();
@@ -779,6 +795,38 @@ impl AppState {
         let _ = self.resolve(&video_id, is_upload).await;
     }
 
+    /// Start one Internet Radio station as a native live stream. Listen Together deliberately
+    /// rejects it for v2.4 because remote peers cannot resolve this machine's cached station record.
+    pub async fn play_radio_station(
+        self: &std::sync::Arc<Self>,
+        station: crate::radio::RadioStation,
+    ) -> Result<(), String> {
+        if self.lt.is_guest().await || self.lt.is_host().await {
+            return Err("Live Radio is unavailable while Listen Together is active.".into());
+        }
+        let station = crate::radio::normalize_station(station)
+            .ok_or_else(|| "This station did not provide a playable HTTP(S) stream.".to_string())?;
+        let item = crate::radio::song_item(&station);
+        let json = serde_json::to_string(&station).map_err(|e| e.to_string())?;
+        self.db.put_radio_station(&item.video_id, &json);
+
+        let uuid = station.station_uuid.clone();
+        tauri::async_runtime::spawn(async move {
+            crate::radio::count_click(&uuid).await;
+        });
+
+        self.play_tracks(
+            vec![item],
+            Some(0),
+            None,
+            Some("Live Radio".into()),
+            false,
+            None,
+        )
+        .await;
+        Ok(())
+    }
+
     /// Start a fresh queue from one track (a search-result click), then hydrate the radio via
     /// `next` and prime the gapless lookahead.
     pub async fn play_song(self: &std::sync::Arc<Self>, seed: SongItem) {
@@ -817,7 +865,7 @@ impl AppState {
         // A local file isn't a videoId YouTube has ever heard of: asking for its radio is a
         // guaranteed-useless request, and offline (where local music earns its keep) it's a
         // guaranteed-failing one.
-        if crate::local::is_local_song(&video_id) {
+        if crate::local::is_local_song(&video_id) || crate::radio::is_radio_id(&video_id) {
             self.prime_lookahead(gen).await;
             return;
         }
@@ -1683,7 +1731,10 @@ impl AppState {
     /// detached and guarded by both playback generation and rating epoch, so a skip or a newer user
     /// rating cannot be overwritten by a stale response.
     fn refresh_rating(self: &std::sync::Arc<Self>, video_id: &str, gen: u64) {
-        if !self.it.is_logged_in() || crate::local::is_local_song(video_id) {
+        if !self.it.is_logged_in()
+            || crate::local::is_local_song(video_id)
+            || crate::radio::is_radio_id(video_id)
+        {
             return;
         }
         let me = self.clone();
@@ -1741,7 +1792,9 @@ impl AppState {
         if let Some(d) = &self.discord {
             d.set_track(item);
         }
-        self.lastfm.set_track(item);
+        if !crate::radio::is_radio_id(&item.video_id) {
+            self.lastfm.set_track(item);
+        }
         // New track ⇒ let the next position tick through immediately instead of waiting out the
         // ~1s throttle, so a restored seek position (and the play-state self-heal) lands at once.
         self.last_media_push.store(0, Ordering::Relaxed);
@@ -1980,7 +2033,9 @@ impl AppState {
         // the latch and skip the record when the play didn't start near zero.
         // Local files don't count: On Repeat is the only thing built from this table, and it's a
         // YouTube Music playlist — a row pointing at a path on this disk doesn't belong in it.
-        if let Some(item) = played.filter(|i| !crate::local::is_local_song(&i.video_id)) {
+        if let Some(item) = played.filter(|i| {
+            !crate::local::is_local_song(&i.video_id) && !crate::radio::is_radio_id(&i.video_id)
+        }) {
             if let Ok(json) = serde_json::to_string(&item) {
                 self.db.record_play(&item.video_id, &json, now_secs(), ON_REPEAT_WINDOW_SECS);
             }
@@ -2055,7 +2110,10 @@ impl AppState {
             let Some(last) = q.items.last() else { return 0 };
             // Nothing to continue from when the queue ends on a local file: its path is not a
             // videoId, and a queue of local music is exactly the case that has to work offline.
-            if q.radio_seed.is_none() && crate::local::is_local_song(&last.video_id) {
+            if q.radio_seed.is_none()
+                && (crate::local::is_local_song(&last.video_id)
+                    || crate::radio::is_radio_id(&last.video_id))
+            {
                 return 0;
             }
             let seed = q.radio_seed.clone().unwrap_or_else(|| format!("RDAMVM{}", last.video_id));
