@@ -9,6 +9,7 @@
 		Add01Icon,
 		PinIcon,
 		MusicNote01Icon,
+		Radio02Icon,
 		ListRestartIcon,
 		SquareArrowLeft01Icon,
 		SquareArrowRight01Icon
@@ -35,7 +36,7 @@
 	const discoverNav = [
 		{ href: '/', label: 'Home', icon: Home01Icon, kana: '聴' },
 		{ href: '/search', label: 'Search', icon: Search01Icon, kana: '探' },
-		{ href: '/radio', label: 'Radio', icon: MusicNote01Icon, kana: '波' }
+		{ href: '/radio', label: 'Radio', icon: Radio02Icon, kana: '波' }
 	];
 	const collectionNav = { href: '/library', label: 'Library', icon: LibraryIcon, kana: '蔵' };
 	const isActive = (href: string) =>
