@@ -121,7 +121,7 @@ fn http_url(value: &str) -> bool {
         .is_some_and(|url| matches!(url.scheme(), "http" | "https"))
 }
 
-fn normalize(mut station: RadioStation) -> Option<RadioStation> {
+pub fn normalize_station(mut station: RadioStation) -> Option<RadioStation> {
     station.station_uuid = station.station_uuid.trim().to_owned();
     station.name = station.name.trim().to_owned();
     station.stream_url = station.stream_url.trim().to_owned();
@@ -163,7 +163,7 @@ pub async fn stations(query: Option<&str>, offset: usize, limit: usize) -> Resul
         )
     };
     let rows: Vec<RadioStation> = get_json(&path).await?;
-    Ok(rows.into_iter().filter_map(normalize).collect())
+    Ok(rows.into_iter().filter_map(normalize_station).collect())
 }
 
 /// Radio Browser asks clients to register a click when a station is actually played. Best effort:
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn station_normalization_prefers_resolved_and_rejects_non_http_streams() {
-        let good = normalize(RadioStation {
+        let good = normalize_station(RadioStation {
             station_uuid: " abc ".into(),
             name: " Test ".into(),
             stream_url: "https://stream.example/live".into(),
@@ -238,7 +238,7 @@ mod tests {
         assert_eq!(good.codec, "MP3");
         assert!(good.homepage.is_empty());
 
-        let bad = normalize(RadioStation { stream_url: "file:///tmp/a".into(), url: String::new(), ..good });
+        let bad = normalize_station(RadioStation { stream_url: "file:///tmp/a".into(), url: String::new(), ..good });
         assert!(bad.is_none());
     }
 
