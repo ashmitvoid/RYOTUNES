@@ -11,9 +11,8 @@ use tauri::{Emitter, State};
 
 use crate::state::{
     is_local_playlist_id, is_smart_playlist_id, AppState, LOCAL_PLAYLIST_PREFIX, ON_REPEAT_ID,
-    ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS,
-    RECENTLY_PLAYED_ID, RECENTLY_PLAYED_WINDOW_SECS, REDISCOVER_ID, REDISCOVER_OLDER_THAN_SECS,
-    SMART_PLAYLIST_LIMIT,
+    ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS, RECENTLY_PLAYED_ID, RECENTLY_PLAYED_WINDOW_SECS,
+    REDISCOVER_ID, REDISCOVER_OLDER_THAN_SECS, SMART_PLAYLIST_LIMIT,
 };
 
 type St<'a> = State<'a, Arc<AppState>>;
@@ -518,12 +517,8 @@ pub async fn get_library(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
     // Device playlists are independent of Google sign-in. Keep smart playlists first, then put
     // playlists created on this machine ahead of account rows so the signed-out Library is useful
     // rather than an empty instruction screen.
-    let device: Vec<BrowseItem> = state
-        .db
-        .local_playlists()
-        .into_iter()
-        .map(local_playlist_card)
-        .collect();
+    let device: Vec<BrowseItem> =
+        state.db.local_playlists().into_iter().map(local_playlist_card).collect();
     let smart_count = usize::from(!songs.is_empty())
         + usize::from(!recent.is_empty())
         + usize::from(!rediscover.is_empty());
@@ -1225,15 +1220,8 @@ pub async fn create_playlist(state: St<'_>, title: String) -> Result<String, Str
 
     // Random suffix avoids collisions between rapid creates while the wall-clock prefix keeps ids
     // debuggable. It is an internal namespace, never sent to YouTube.
-    let id = format!(
-        "{LOCAL_PLAYLIST_PREFIX}{}-{:016x}",
-        now_secs(),
-        rand::random::<u64>()
-    );
-    state
-        .db
-        .create_local_playlist(&id, &title)
-        .map_err(|e| format!("device playlist: {e}"))?;
+    let id = format!("{LOCAL_PLAYLIST_PREFIX}{}-{:016x}", now_secs(), rand::random::<u64>());
+    state.db.create_local_playlist(&id, &title).map_err(|e| format!("device playlist: {e}"))?;
     Ok(id)
 }
 
