@@ -14,6 +14,7 @@ mod media;
 mod mini;
 mod orchestrator;
 mod potoken;
+mod radio;
 mod ryoku_theme;
 mod session;
 mod state;
@@ -460,11 +461,14 @@ pub fn run() {
             commands::get_browse_grid,
             commands::play_playlist,
             commands::start_radio,
+            commands::radio_stations,
+            commands::play_radio_station,
             commands::export_playlist_file,
             commands::import_playlist_file,
             commands::rate,
             commands::set_album_saved,
             commands::add_to_playlist,
+            commands::add_to_local_playlist,
             commands::remove_from_playlist,
             commands::create_playlist,
             commands::edit_playlist_details,
