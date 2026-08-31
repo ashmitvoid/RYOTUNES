@@ -942,6 +942,49 @@ mod tests {
     }
 
     #[test]
+    fn device_playlists_survive_account_index_clears_and_keep_order() {
+        let d = db();
+        let id = "RYOTUNES_LOCAL_PLAYLIST:test";
+        d.create_local_playlist(id, "Offline mix").unwrap();
+
+        assert!(d.add_local_playlist_track(id, "a", r#"{"video_id":"a"}"#).unwrap());
+        assert!(d.add_local_playlist_track(id, "b", r#"{"video_id":"b"}"#).unwrap());
+        assert!(
+            !d.add_local_playlist_track(id, "a", r#"{"video_id":"a"}"#).unwrap(),
+            "device playlists refuse duplicate track ids"
+        );
+        assert_eq!(
+            d.local_playlist_track_json(id),
+            vec![
+                r#"{"video_id":"a"}"#.to_string(),
+                r#"{"video_id":"b"}"#.to_string()
+            ],
+            "insertion order is stable"
+        );
+
+        d.set_playlist_tracks("VLACCOUNT", &["a".into()]);
+        let before = d.playlist_memberships();
+        assert!(before["a"].contains(&id.to_string()));
+        assert!(before["a"].contains(&"VLACCOUNT".to_string()));
+
+        d.clear_playlist_index();
+        let after = d.playlist_memberships();
+        assert_eq!(
+            after["a"],
+            vec![id.to_string()],
+            "sign-out/account reset clears only the YouTube-derived index"
+        );
+
+        d.rename_local_playlist(id, "Renamed").unwrap();
+        assert_eq!(d.local_playlist(id).unwrap().title, "Renamed");
+        d.remove_local_playlist_track(id, "a").unwrap();
+        assert_eq!(d.local_playlist_track_json(id), vec![r#"{"video_id":"b"}"#.to_string()]);
+        d.delete_local_playlist(id).unwrap();
+        assert!(d.local_playlist(id).is_none());
+        assert!(!d.playlist_memberships().contains_key("b"));
+    }
+
+    #[test]
     fn opening_the_db_clears_local_files_out_of_on_repeat() {
         // 0.3.1 counted local plays before On Repeat excluded them; opening the db drops the rows.
         let path = std::env::temp_dir().join("ryotunes-plays-purge-test.sqlite");
