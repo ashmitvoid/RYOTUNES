@@ -930,9 +930,11 @@ export function initApp(mini = false): () => void {
 			playback.rating = n.rating ?? 'indifferent'; // initial row snapshot; backend refresh may correct it
 			// Feeds Shortcuts recency and the community shelf's artist seed. Every play lands here,
 			// gapless advances included, so it's the one hook that sees them all.
-			pl.touchPick(personal, n.videoId);
-			if (n.artists) pl.noteArtist(personal, n.artistId ?? n.artists, pl.firstArtist(n.artists));
-			savePersonal();
+			if (!api.isRadioId(n.videoId)) {
+				pl.touchPick(personal, n.videoId);
+				if (n.artists) pl.noteArtist(personal, n.artistId ?? n.artists, pl.firstArtist(n.artists));
+				savePersonal();
+			}
 		}),
 		api.onRating((videoId, rating) => {
 			ratings[videoId] = rating;
