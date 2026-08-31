@@ -50,17 +50,22 @@ playerbar = read('ui/src/lib/components/PlayerBar.svelte')
 layout_css = read('ui/src/routes/layout.css')
 ryoku_live = read('ui/src/lib/ryoku-live.ts')
 ryoku_theme = read('src-tauri/src/ryoku_theme.rs')
+radio = read('src-tauri/src/radio.rs')
+db = read('src-tauri/src/db.rs')
+add_to_playlist_ui = read('ui/src/lib/components/AddToPlaylist.svelte')
+radio_ui = read('ui/src/routes/radio/+page.svelte')
+package_builder = read('scripts/build-replacement-package.sh')
 
-# --- frozen v2.3 identity ----------------------------------------------------
-req('version = "2.3.0"' in cargo, 'workspace version is not 2.3.0')
-req('name = "ryotunes"\nversion = "2.3.0"' in lock, 'Cargo.lock Ryotunes version not 2.3.0')
-req('name = "sync-server"\nversion = "2.3.0"' in lock, 'Cargo.lock sync-server version not 2.3.0')
+# --- frozen v2.4 identity ----------------------------------------------------
+req('version = "2.4.0"' in cargo, 'workspace version is not 2.4.0')
+req('name = "ryotunes"\nversion = "2.4.0"' in lock, 'Cargo.lock Ryotunes version not 2.4.0')
+req('name = "sync-server"\nversion = "2.4.0"' in lock, 'Cargo.lock sync-server version not 2.4.0')
 parsed = json.loads(config)
-req(parsed.get('version') == '2.3.0' and parsed.get('identifier') == 'dev.ryoku.ryotunes', 'Tauri identity incorrect')
-req(json.loads(read('ui/package.json')).get('version') == '2.3.0', 'UI version incorrect')
-req("PRODUCT_VERSION = 'v2.3'" in settings and "'2.3.0'" in settings, 'Settings version identity incorrect')
-req('pkgver=2.3.0' in read('packaging/arch/PKGBUILD'), 'Arch source pkgver incorrect')
-req('ryotunes-v2.3 2.3.0-1' in read('README.md') and 'ryotunes-v2.3 2.3.0-1' in read('RELEASE_NOTES.md'), 'public package identity missing from docs')
+req(parsed.get('version') == '2.4.0' and parsed.get('identifier') == 'dev.ryoku.ryotunes', 'Tauri identity incorrect')
+req(json.loads(read('ui/package.json')).get('version') == '2.4.0', 'UI version incorrect')
+req("PRODUCT_VERSION = 'v2.4'" in settings and "'2.4.0'" in settings, 'Settings version identity incorrect')
+req('pkgver=2.4.0' in read('packaging/arch/PKGBUILD'), 'Arch source pkgver incorrect')
+req('ryotunes-v2.4 2.4.0-1' in read('README.md') and 'ryotunes-v2.4 2.4.0-1' in read('RELEASE_NOTES.md'), 'public package identity missing from docs')
 req('name = "httpdate"' not in lock and 'name = "tauri-plugin-window-state"' not in lock, 'stale v2.0 lock entries returned')
 
 # --- audio-only / background architecture ----------------------------------
@@ -70,6 +75,24 @@ active = '\n'.join(read(p) for p in [
 for forbidden in ['video_stream', 'set_webkit_media_enabled', 'videoproxy', 'hide_videos']:
     req(forbidden not in active, f'audio-only path regressed: {forbidden}')
 req('<video ' not in now and '<video>' not in now, 'video element returned to Now Playing')
+
+# --- v2.4 Radio / device playlists / Discord title -------------------------
+req('mod radio;' in lib and 'commands::radio_stations' in lib and 'commands::play_radio_station' in lib,
+    'Internet Radio command wiring missing')
+req('RADIO_ID_PREFIX' in radio and 'hidebroken=true' in radio and 'count_click' in radio,
+    'bounded Radio Browser integration missing')
+req('setInterval(' not in radio_ui and 'radioStations' in radio_ui and 'playRadioStation' in radio_ui,
+    'Radio UI is not demand-driven')
+req('CREATE TABLE IF NOT EXISTS local_playlists' in db and 'CREATE TABLE IF NOT EXISTS local_playlist_tracks' in db,
+    'persistent device playlist storage missing')
+req('LOCAL_PLAYLIST_PREFIX' in state and 'add_to_local_playlist' in commands,
+    'device playlist native command path missing')
+req('Create + add' in add_to_playlist_ui and 'addToLocalPlaylist' in add_to_playlist_ui,
+    'Add-to-playlist create-and-add flow missing')
+req('discord_presence_name' in commands and 'DEFAULT_PRESENCE_NAME' in read('src-tauri/src/discord.rs'),
+    'custom Discord presence title backend missing')
+req('Discord presence title' in settings and "api.setSetting('discord_presence_name'" in settings,
+    'custom Discord presence title UI missing')
 req('unsupportedHomeSection' in home and r'music\s*videos?' in registry and 'video\\s+for\\s+you' in registry, 'central Home video rejection missing')
 req('destroy()' in main and 'hibernate_main' in main and 'trim_after_hibernate' in main, 'Linux WebKit hibernation missing')
 req('const IDLE_EXIT_GRACE: Duration = Duration::from_secs(5 * 60);' in main, 'five-minute tray grace changed')
@@ -205,10 +228,14 @@ req('grid-template-columns:232px minmax(0,1fr)' in mini and 'gap:7px' in mini an
 req('--background: oklch(0.80 0.008 80)' in layout_css and '--card: oklch(0.83 0.009 80)' in layout_css, 'pre-theme light surfaces can still flash pure white')
 
 # --- diagnostics / package integration -------------------------------------
-req("local expected='/usr/lib/ryotunes-v2.3/ryotunes'" in diag, 'diagnostics expected binary path incorrect')
+req("local expected='/usr/lib/ryotunes-v2.4/ryotunes'" in diag, 'diagnostics expected binary path incorrect')
 req('for p in /proc/[0-9]*' in diag and 'readlink -f "$p/exe"' in diag, 'diagnostics do not identify process through /proc/<pid>/exe')
 req('/home/' not in diag and '/Users/' not in diag, 'diagnostics contain private user paths')
-req('state_home="${XDG_DATA_HOME:-$HOME/.local/share}/ryotunes-v2.3"' in rule, 'Ryoku rule state path is not versioned for v2.3')
+req('state_home="${XDG_DATA_HOME:-$HOME/.local/share}/ryotunes-v2.4"' in rule, 'Ryoku rule state path is not versioned for v2.4')
+req('adopt_previous_backup' in package_builder and '/var/lib/ryotunes-v2.3/stock' in package_builder,
+    'v2.4 replacement package does not inherit the previous stock rollback backup')
+req("conflicts=('ryotunes-v2.3'" in package_builder,
+    'v2.4 package does not declare the previous custom package generation as a conflict')
 
 # Frontend settings whitelist stays synchronized with Rust command boundary.
 ui_block = commands.split('const UI_SETTINGS:',1)[1].split('];',1)[0]
@@ -219,4 +246,4 @@ for p in (root/'ui/src').rglob('*'):
         written.update(re.findall(r"api\.setSetting\('([^']+)'", p.read_text()))
 req(written <= allowed, f'frontend writes unwhitelisted settings: {sorted(written-allowed)}')
 
-print('Release invariants v2.3: OK')
+print('Release invariants v2.4: OK')

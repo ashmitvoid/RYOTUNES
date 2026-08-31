@@ -9,12 +9,16 @@
 		ui,
 		toast,
 		bumpLibraryTrackCount,
+		createLibraryPlaylist,
 		notePlaylistAdd,
 		noteSavedIn
 	} from '$lib/player.svelte';
 
 	let playlists = $state<BrowseItem[]>([]);
 	let loading = $state(false);
+	let creating = $state(false);
+	let newTitle = $state('');
+	let showCreate = $state(false);
 
 	// Fetch the library playlists fresh each time the picker opens (cheap; picks up new playlists).
 	// On Repeat and Liked Music are dropped: On Repeat is built from local play counts, and Liked
@@ -38,6 +42,8 @@
 
 	function close() {
 		ui.addSongs = null;
+		showCreate = false;
+		newTitle = '';
 	}
 
 	async function pick(pl: BrowseItem) {
@@ -51,7 +57,10 @@
 			// removed (no setVideoId behind it) until the app restarts.
 			const added: typeof songs = [];
 			for (const song of songs) {
-				if (await api.addToPlaylist(pl.id, song.video_id)) added.push(song);
+				const accepted = api.isLocalPlaylistId(pl.id)
+					? await api.addToLocalPlaylist(pl.id, song)
+					: await api.addToPlaylist(pl.id, song.video_id);
+				if (accepted) added.push(song);
 			}
 			const dupes = songs.length - added.length;
 			// Every song, not just the accepted ones: a refusal means the playlist already holds it,
@@ -72,6 +81,23 @@
 			}
 		} catch (e) {
 			toast.error(String(e));
+		}
+	}
+
+	async function createAndPick() {
+		const title = newTitle.trim();
+		if (!title || creating) return;
+		creating = true;
+		try {
+			const playlist = await createLibraryPlaylist(title);
+			playlists = [playlist, ...playlists.filter((p) => p.id !== playlist.id)];
+			newTitle = '';
+			showCreate = false;
+			await pick(playlist);
+		} catch (e) {
+			toast.error(String(e));
+		} finally {
+			creating = false;
 		}
 	}
 </script>
@@ -100,6 +126,38 @@
 					<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
 				</button>
 			</div>
+			<div class="mb-2">
+				{#if showCreate}
+					<form
+						class="flex gap-2"
+						onsubmit={(e) => {
+							e.preventDefault();
+							createAndPick();
+						}}
+					>
+						<input
+							class="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground/40"
+							bind:value={newTitle}
+							maxlength="150"
+							placeholder="Playlist name"
+						/>
+						<button
+							type="submit"
+							class="rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50"
+							disabled={creating || !newTitle.trim()}
+						>
+							{creating ? 'Creating…' : 'Create + add'}
+						</button>
+					</form>
+				{:else}
+					<button
+						class="w-full rounded-md border border-border px-3 py-2 text-left text-sm font-medium hover:bg-accent/10"
+						onclick={() => (showCreate = true)}
+					>
+						+ New playlist
+					</button>
+				{/if}
+			</div>
 			{#if loading}
 				<p class="p-2 text-sm text-muted-foreground">Loading…</p>
 			{:else if playlists.length}
@@ -125,7 +183,7 @@
 				</div>
 			{:else}
 				<p class="p-2 text-sm text-muted-foreground">
-					No playlists yet — create one in your Library.
+					No playlists yet. Create one above and these songs will be added immediately.
 				</p>
 			{/if}
 		</div>

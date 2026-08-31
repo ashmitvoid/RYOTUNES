@@ -132,6 +132,7 @@
 	const isRecent = $derived(id === RECENTLY_PLAYED_ID);
 	const isRediscover = $derived(id === REDISCOVER_ID);
 	const isSmart = $derived(api.isSmartPlaylistId(id));
+	const isDevicePlaylist = $derived(api.isLocalPlaylistId(id));
 	const heroMode = $derived(isOnRepeat ? 'repeat' : isRecent ? 'recent' : isRediscover ? 'rediscover' : isLiked ? 'liked' : 'playlist');
 	type HeroSource = { key: string; src: string };
 	const heroSources = $derived.by(() => {
@@ -155,8 +156,8 @@
 		if (heroFailed[key]) return;
 		heroFailed = { ...heroFailed, [key]: true };
 	}
-	// Only offer rename/delete on playlists the signed-in user actually owns (backend `owned` flag).
-	// Liked Music reports owned but can't be renamed/deleted, so exclude it explicitly.
+	// Account playlists use the backend owned flag; device playlists deliberately report owned too
+	// because their local rename/delete path is fully editable. Liked Music is the only exclusion.
 	const editable = $derived((pl?.owned ?? false) && !isLiked);
 	// Saving someone else's playlist keeps it on this machine, signed in or not: YouTube has no
 	// "save" for a playlist that doesn't cost an account, and the local one works offline. Your own
@@ -450,7 +451,7 @@
 	// patch the real ids into place (merge, not replace — keeps loadMore pages and any row YouTube
 	// hasn't reflected yet). Retries because the add is eventually-consistent on YouTube's side.
 	async function fillSetVideoIds() {
-		if (isLiked) return;
+		if (isLiked || isDevicePlaylist) return;
 		const pid = id;
 		for (const delay of [0, 2000, 4000]) {
 			if (delay) await new Promise((r) => setTimeout(r, delay));
@@ -990,7 +991,7 @@
 			<HugeiconsIcon icon={Share08Icon} class="h-4 w-4" /> Export playlist file
 		</button>
 		
-		{#if !isSmart}
+		{#if !isSmart && !isDevicePlaylist}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={() => run(() => startRadio('playlist', id, pl?.title))}
@@ -1004,7 +1005,7 @@
 		>
 			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to shortcuts
 		</button>
-		{#if !isSmart}
+		{#if !isSmart && !isDevicePlaylist}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={() => run(() => openShare(asItem()))}
@@ -1058,6 +1059,7 @@
 		privacy={pl?.privacy}
 		cover={pl?.cover}
 		fallback={pl?.thumbnail}
+		local={isDevicePlaylist}
 		onchange={applyEdit}
 	/>
 {/if}

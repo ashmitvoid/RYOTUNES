@@ -250,13 +250,21 @@ export async function loadLibraryExtras(force = false) {
 	}
 }
 
-/** Create a playlist and optimistically prepend it so every view updates immediately. */
-export async function createLibraryPlaylist(title: string): Promise<void> {
+/** Create a playlist and optimistically prepend it so every view updates immediately.
+ * Signed out, Rust returns a device-playlist id; signed in, the existing YouTube flow is preserved. */
+export async function createLibraryPlaylist(title: string): Promise<BrowseItem> {
 	const id = await api.createPlaylist(title);
 	// YouTube's library browse is eventually-consistent and won't include a brand-new playlist for a
-	// few seconds, so surface it immediately instead of refetching.
-	const browseId = id.startsWith('VL') ? id : `VL${id}`;
-	library.items = [{ kind: 'playlist', id: browseId, title }, ...library.items];
+	// few seconds, so surface it immediately instead of refetching. Device ids must never gain VL.
+	const browseId = api.isLocalPlaylistId(id) ? id : id.startsWith('VL') ? id : `VL${id}`;
+	const item: BrowseItem = {
+		kind: 'playlist',
+		id: browseId,
+		title,
+		subtitle: api.isLocalPlaylistId(browseId) ? '0 tracks · On this device' : undefined
+	};
+	library.items = [item, ...library.items];
+	return item;
 }
 
 /** Optimistically apply an edit to a library playlist's row (sidebar + Library grid), so a rename
@@ -922,9 +930,11 @@ export function initApp(mini = false): () => void {
 			playback.rating = n.rating ?? 'indifferent'; // initial row snapshot; backend refresh may correct it
 			// Feeds Shortcuts recency and the community shelf's artist seed. Every play lands here,
 			// gapless advances included, so it's the one hook that sees them all.
-			pl.touchPick(personal, n.videoId);
-			if (n.artists) pl.noteArtist(personal, n.artistId ?? n.artists, pl.firstArtist(n.artists));
-			savePersonal();
+			if (!api.isRadioId(n.videoId)) {
+				pl.touchPick(personal, n.videoId);
+				if (n.artists) pl.noteArtist(personal, n.artistId ?? n.artists, pl.firstArtist(n.artists));
+				savePersonal();
+			}
 		}),
 		api.onRating((videoId, rating) => {
 			ratings[videoId] = rating;
@@ -1028,12 +1038,9 @@ export function initApp(mini = false): () => void {
 				return;
 			}
 			loadLibrary();
-			if (a.signedIn) {
-				// The crawl behind this is the app's only bulk request, so it runs once here (and
-				// on a sign-in), never on navigation. It settles into the background while the
-				// first page paints from the stored index.
-				loadSavedIndex();
-			}
+			// The stored membership map also contains device playlists, so load it signed out too.
+			// Rust skips the YouTube crawl when there is no account.
+			loadSavedIndex();
 		})
 		.catch(() => {});
 	// Local-folder rescans and Listen Together restoration are useful, but neither belongs on the

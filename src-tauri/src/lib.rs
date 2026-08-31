@@ -14,6 +14,7 @@ mod media;
 mod mini;
 mod orchestrator;
 mod potoken;
+mod radio;
 mod ryoku_theme;
 mod session;
 mod state;
@@ -266,7 +267,12 @@ pub fn run() {
             taskbar::init(&handle);
 
             // Discord rich presence — off unless the user opted in; parks on its channel until then.
-            let discord = discord::spawn(db.get_setting("discord_rpc").as_deref() == Some("true"));
+            // The activity label is local vanity text; the fixed APP_ID remains Ryotunes' identity.
+            let discord = discord::spawn(
+                db.get_setting("discord_rpc").as_deref() == Some("true"),
+                db.get_setting("discord_presence_name")
+                    .unwrap_or_else(|| discord::DEFAULT_PRESENCE_NAME.into()),
+            );
 
             // Last.fm scrobbler — parks until a session key exists (titlebar connect flow).
             let lastfm =
@@ -460,11 +466,14 @@ pub fn run() {
             commands::get_browse_grid,
             commands::play_playlist,
             commands::start_radio,
+            commands::radio_stations,
+            commands::play_radio_station,
             commands::export_playlist_file,
             commands::import_playlist_file,
             commands::rate,
             commands::set_album_saved,
             commands::add_to_playlist,
+            commands::add_to_local_playlist,
             commands::remove_from_playlist,
             commands::create_playlist,
             commands::edit_playlist_details,

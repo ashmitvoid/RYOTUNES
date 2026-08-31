@@ -36,12 +36,14 @@
 	const metaFor = (id: TabId) => TAB_META[id];
 	const activeMeta = $derived(metaFor(tab));
 	const activeLabel = $derived(TABS.find((t) => t.id === tab)?.label ?? 'General');
-	const PRODUCT_VERSION = 'v2.3';
-	let buildVersion = $state('2.3.0');
+	const PRODUCT_VERSION = 'v2.4';
+	let buildVersion = $state('2.4.0');
 	getVersion().then((v) => (buildVersion = v)).catch(() => {});
 	let settings = $state<Record<string, string>>({});
 	let clients = $state<string[]>([]);
 	let proxyInput = $state('');
+	let discordNameInput = $state('Music');
+	let savingDiscordName = $state(false);
 	let loaded = $state(false);
 	let clearing = $state(false);
 	let discordState = $state<api.DiscordStatus>({ enabled: false, status: 'disabled' });
@@ -122,6 +124,7 @@
 			settings = s;
 			clients = c;
 			proxyInput = s.proxy ?? '';
+			discordNameInput = s.discord_presence_name?.trim() || 'Music';
 			if (s.low_resource_mode === 'true' && !appearance.lowResourceMode) setAppearance({ lowResourceMode: true });
 			if (s.low_resource_mode !== 'true' && appearance.lowResourceMode) {
 				settings.low_resource_mode = 'true';
@@ -199,6 +202,32 @@
 		settings.discord_rpc = on ? 'true' : 'false';
 		await api.setSetting('discord_rpc', settings.discord_rpc);
 		discordState = await api.discordStatus().catch(() => ({ enabled: on, status: on ? 'connecting' : 'disabled' } as api.DiscordStatus));
+	}
+
+	async function saveDiscordName() {
+		if (savingDiscordName) return;
+		const value = discordNameInput.trim() || 'Music';
+		const length = [...value].length;
+		if (length < 2 || length > 128) {
+			toast.error('Discord presence title must be between 2 and 128 characters');
+			return;
+		}
+		savingDiscordName = true;
+		try {
+			await api.setSetting('discord_presence_name', value);
+			settings.discord_presence_name = value;
+			discordNameInput = value;
+			toast.success(`Discord now shows “Listening to ${value}”`);
+		} catch (e) {
+			toast.error(String(e));
+		} finally {
+			savingDiscordName = false;
+		}
+	}
+
+	async function resetDiscordName() {
+		discordNameInput = 'Music';
+		await saveDiscordName();
 	}
 
 	async function setLowResource(on: boolean) {
@@ -354,6 +383,40 @@
 							<p class="mt-1 text-xs font-medium" data-discord-status={discordState.status}>Status: {discordState.status === 'connected' ? 'Connected' : discordState.status === 'connecting' ? 'Connecting…' : discordState.status === 'unavailable' ? 'Discord not running / unavailable' : 'Disabled'}</p>
 						</div>
 						<Switch checked={discordOn} onCheckedChange={setDiscord} />
+					</div>
+					<div class="border-b py-3">
+						<div class="font-medium">Discord presence title</div>
+						<p class="mt-0.5 text-sm text-muted-foreground">
+							Customize the text Discord renders as “Listening to …”. Track, artist and Ryotunes'
+							application identity stay unchanged.
+						</p>
+						<div class="mt-3 flex max-w-xl items-center gap-2">
+							<Input
+								bind:value={discordNameInput}
+								maxlength={128}
+								placeholder="Music"
+								aria-label="Discord presence title"
+							/>
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={savingDiscordName || !discordNameInput.trim()}
+								onclick={saveDiscordName}
+							>
+								{savingDiscordName ? 'Saving…' : 'Save'}
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={savingDiscordName || discordNameInput === 'Music'}
+								onclick={resetDiscordName}
+							>
+								Reset
+							</Button>
+						</div>
+						<p class="mt-2 text-xs text-muted-foreground">
+							Preview: Listening to {discordNameInput.trim() || 'Music'}
+						</p>
 					</div>
 					<div class="flex items-start justify-between gap-4 border-b py-3">
 						<div class="min-w-0">

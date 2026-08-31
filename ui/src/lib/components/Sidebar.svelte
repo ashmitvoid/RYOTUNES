@@ -9,6 +9,7 @@
 		Add01Icon,
 		PinIcon,
 		MusicNote01Icon,
+		Radio02Icon,
 		ListRestartIcon,
 		SquareArrowLeft01Icon,
 		SquareArrowRight01Icon
@@ -34,7 +35,8 @@
 
 	const discoverNav = [
 		{ href: '/', label: 'Home', icon: Home01Icon, kana: '聴' },
-		{ href: '/search', label: 'Search', icon: Search01Icon, kana: '探' }
+		{ href: '/search', label: 'Search', icon: Search01Icon, kana: '探' },
+		{ href: '/radio', label: 'Radio', icon: Radio02Icon, kana: '波' }
 	];
 	const collectionNav = { href: '/library', label: 'Library', icon: LibraryIcon, kana: '蔵' };
 	const isActive = (href: string) =>
@@ -173,20 +175,17 @@
 	</nav>
 
 	
-	{#if auth.account?.signedIn || playlists.length}
-		<div class="ryo-rail-library hidden min-h-0 flex-1 flex-col {wide('lg:flex')}">
+	<div class="ryo-rail-library hidden min-h-0 flex-1 flex-col {wide('lg:flex')}">
 			<div class="ryo-rail-group-head ryo-rail-playlists-head"><span>04</span><strong>PLAYLISTS</strong><i></i><b>列</b></div>
 			
-			{#if auth.account?.signedIn}
-				<Button
-					variant="outline"
-					size="sm"
-					class="mb-2 w-full gap-2"
-					onclick={() => (dialogOpen = true)}
-				>
-					<HugeiconsIcon icon={Add01Icon} class="h-4 w-4" /> New playlist
-				</Button>
-			{/if}
+			<Button
+				variant="outline"
+				size="sm"
+				class="mb-2 w-full gap-2"
+				onclick={() => (dialogOpen = true)}
+			>
+				<HugeiconsIcon icon={Add01Icon} class="h-4 w-4" /> New playlist
+			</Button>
 			{#if playlists.length > 8}
 				<div class="ryo-rail-playlist-filter">
 					<Input bind:value={playlistFilter} aria-label="Filter playlists" placeholder="Filter playlists…" />
@@ -247,7 +246,11 @@
 			<Dialog.Content class="ryo-overlay-sheet sm:max-w-md">
 				<Dialog.Header>
 					<Dialog.Title>New playlist</Dialog.Title>
-					<Dialog.Description>Give your playlist a name to get started.</Dialog.Description>
+					<Dialog.Description>
+						{auth.account?.signedIn
+							? 'Give your YouTube Music playlist a name to get started.'
+							: 'This playlist will be stored on this device. Sign in later without losing it.'}
+					</Dialog.Description>
 				</Dialog.Header>
 				<form
 					class="flex flex-col gap-4"
@@ -266,7 +269,6 @@
 				</form>
 			</Dialog.Content>
 		</Dialog.Root>
-	{/if}
 
 	<div class="ryo-rail-foot hidden {wide('lg:block')}">
 		<div class="ryo-rail-foot-rule"></div>

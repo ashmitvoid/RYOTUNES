@@ -193,11 +193,9 @@
 
 	<div class="ryo-page-toolbar ryo-library-toolbar">
 		<div class="ryo-page-toolbar-spacer"></div>
-		{#if auth.account?.signedIn}
-			<div class="flex items-center gap-2">
-				
+		<div class="flex items-center gap-2">
+			{#if auth.account?.signedIn}
 				{#if toSync.length}
-					
 					<Tooltip.Provider delayDuration={150}>
 						<Tooltip.Root>
 							<Tooltip.Trigger>
@@ -215,7 +213,6 @@
 												icon={CloudSyncIcon}
 												class="h-4 w-4 {syncing ? 'animate-pulse' : ''}"
 											/>
-											
 											<span
 												class="absolute -right-2 -top-1.5 min-w-3.5 rounded-full bg-accent px-[3px] text-[9px] font-semibold leading-[0.875rem] text-accent-foreground ring-[1.5px] ring-background"
 											>
@@ -236,11 +233,11 @@
 				<Button variant="outline" size="sm" onclick={importPlaylist} disabled={importing}>
 					{importing ? 'Importing…' : 'Import playlist'}
 				</Button>
-				<Button variant="outline" size="sm" class="gap-2" onclick={() => (dialogOpen = true)}>
-					<HugeiconsIcon icon={Add01Icon} class="h-4 w-4" /> New playlist
-				</Button>
-			</div>
-		{/if}
+			{/if}
+			<Button variant="outline" size="sm" class="gap-2" onclick={() => (dialogOpen = true)}>
+				<HugeiconsIcon icon={Add01Icon} class="h-4 w-4" /> New playlist
+			</Button>
+		</div>
 	</div>
 
 	<div class="ryo-library-body ryo-library-tab-{tab}">
@@ -248,7 +245,11 @@
 		<Dialog.Content class="ryo-overlay-sheet sm:max-w-md">
 			<Dialog.Header>
 				<Dialog.Title>New playlist</Dialog.Title>
-				<Dialog.Description>Give your playlist a name to get started.</Dialog.Description>
+				<Dialog.Description>
+					{signedOut
+						? 'This playlist will be stored on this device. Sign in later without losing it.'
+						: 'Give your YouTube Music playlist a name to get started.'}
+				</Dialog.Description>
 			</Dialog.Header>
 			<form
 				class="flex flex-col gap-4"
@@ -341,7 +342,9 @@
 					{#if tab === 'playlists'}
 						{@render grid(
 							playlists,
-							'No playlists yet. Open one and hit Save to library to keep it here.',
+							signedOut
+								? 'No playlists yet. Use New playlist above to create one on this device.'
+								: 'No playlists yet. Use New playlist above, or save one from YouTube Music.',
 							rvPlaylists
 						)}
 					{/if}

@@ -75,6 +75,12 @@
 
 	const shuffleOn = $derived(playback.queue.shuffle ?? false);
 	const repeat = $derived(playback.queue.repeat ?? 'off');
+	const isRadioNow = $derived(api.isRadioId(playback.now?.videoId));
+	const hasYouTubeTrack = $derived(
+		!!playback.now &&
+			!api.isLocalId(playback.now.videoId) &&
+			!api.isRadioId(playback.now.videoId)
+	);
 
 	// The current track was appended by autoplay → show the subtle ∞ badge next to the title.
 	// Matched against the now-playing videoId so a transient queue/now-playing mismatch (mid
@@ -184,7 +190,7 @@
 		{#if playback.now}
 			<div class="flex items-center">
 				
-				{#if !api.isLocalId(playback.now.videoId)}
+				{#if hasYouTubeTrack}
 					<Button
 						variant="ghost"
 						size="icon-sm"
@@ -350,7 +356,8 @@
 				variant={lyricsOpen ? 'secondary' : 'ghost'}
 				size="icon-sm"
 				onclick={onToggleLyrics}
-				aria-label="Toggle lyrics"
+				aria-label={isRadioNow ? 'Lyrics unavailable for live radio' : 'Toggle lyrics'}
+				disabled={isRadioNow}
 			>
 				<HugeiconsIcon icon={Mic01Icon} class="h-5 w-5" />
 			</Button>

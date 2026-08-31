@@ -88,6 +88,30 @@ impl Db {
                 PRIMARY KEY (playlist_id, video_id)
             ) WITHOUT ROWID;
             CREATE INDEX IF NOT EXISTS playlist_track_video ON playlist_track(video_id);
+
+            -- Signed-out/persistent device playlists. These are deliberately separate from the
+            -- YouTube membership index above: signing out or switching accounts must never erase
+            -- a playlist the user created on this machine.
+            CREATE TABLE IF NOT EXISTS local_playlists (
+                id         TEXT PRIMARY KEY,
+                title      TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS local_playlist_tracks (
+                playlist_id TEXT NOT NULL,
+                video_id    TEXT NOT NULL,
+                position    INTEGER NOT NULL,
+                song_json   TEXT NOT NULL,
+                PRIMARY KEY (playlist_id, video_id)
+            ) WITHOUT ROWID;
+            CREATE INDEX IF NOT EXISTS local_playlist_tracks_order
+                ON local_playlist_tracks(playlist_id, position);
+            CREATE TABLE IF NOT EXISTS radio_station_cache (
+                station_id   TEXT PRIMARY KEY,
+                station_json TEXT NOT NULL,
+                updated_at   INTEGER NOT NULL
+            );
             "#,
         )?;
         // Migrate databases that predate the loudness_db column. Errors ("duplicate column")
@@ -216,6 +240,39 @@ impl Db {
             }
         }
         out
+    }
+
+    // --- radio station cache -----------------------------------------------------------------
+
+    /// Keep enough station metadata to resume a persisted live-radio queue after a restart.
+    /// This is metadata only, not audio, and is bounded so browsing radio cannot grow the DB.
+    pub fn put_radio_station(&self, station_id: &str, station_json: &str) {
+        let conn = self.0.lock().unwrap();
+        let _ = conn.execute(
+            "INSERT INTO radio_station_cache(station_id, station_json, updated_at)
+             VALUES(?1, ?2, ?3)
+             ON CONFLICT(station_id) DO UPDATE SET
+                station_json = excluded.station_json,
+                updated_at = excluded.updated_at",
+            rusqlite::params![station_id, station_json, now_secs()],
+        );
+        let _ = conn.execute(
+            "DELETE FROM radio_station_cache
+             WHERE station_id NOT IN (
+                SELECT station_id FROM radio_station_cache ORDER BY updated_at DESC LIMIT 64
+             )",
+            [],
+        );
+    }
+
+    pub fn get_radio_station(&self, station_id: &str) -> Option<String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT station_json FROM radio_station_cache WHERE station_id = ?1",
+            [station_id],
+            |r| r.get(0),
+        )
+        .ok()
     }
 
     // --- stream url cache -------------------------------------------------------------------
@@ -492,13 +549,189 @@ impl Db {
                 }
             }
         }
+        drop(conn);
+        for (video_id, playlist_ids) in self.local_playlist_memberships() {
+            out.entry(video_id).or_default().extend(playlist_ids);
+        }
         out
     }
 
-    /// The index is per-account, so signing out or switching channel empties it.
+    /// Only the YouTube-derived portion is per-account. Device playlists survive sign-out and
+    /// account changes and are merged back by playlist_memberships.
     pub fn clear_playlist_index(&self) {
         let conn = self.0.lock().unwrap();
         let _ = conn.execute("DELETE FROM playlist_track", []);
+    }
+
+    // --- local/device playlists ---------------------------------------------------------------
+
+    /// Playlists created without a YouTube Music account. They live in this database and remain
+    /// visible across sign-out/account changes. Track metadata is stored as the same serialized
+    /// SongItem the queue already understands, so opening one never needs a network round trip.
+    pub fn local_playlists(&self) -> Vec<LocalPlaylist> {
+        let conn = self.0.lock().unwrap();
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT p.id, p.title, p.created_at, p.updated_at,
+                    (SELECT COUNT(*) FROM local_playlist_tracks t WHERE t.playlist_id = p.id)
+             FROM local_playlists p
+             ORDER BY p.updated_at DESC, p.created_at DESC",
+        ) {
+            if let Ok(rows) = stmt.query_map([], |r| {
+                Ok(LocalPlaylist {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    created_at: r.get(2)?,
+                    updated_at: r.get(3)?,
+                    track_count: r.get(4)?,
+                })
+            }) {
+                out.extend(rows.flatten());
+            }
+        }
+        out
+    }
+
+    pub fn local_playlist(&self, id: &str) -> Option<LocalPlaylist> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT p.id, p.title, p.created_at, p.updated_at,
+                    (SELECT COUNT(*) FROM local_playlist_tracks t WHERE t.playlist_id = p.id)
+             FROM local_playlists p WHERE p.id = ?1",
+            [id],
+            |r| {
+                Ok(LocalPlaylist {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    created_at: r.get(2)?,
+                    updated_at: r.get(3)?,
+                    track_count: r.get(4)?,
+                })
+            },
+        )
+        .ok()
+    }
+
+    pub fn create_local_playlist(&self, id: &str, title: &str) -> rusqlite::Result<()> {
+        let conn = self.0.lock().unwrap();
+        let now = now_secs();
+        conn.execute(
+            "INSERT INTO local_playlists(id, title, created_at, updated_at) VALUES(?1, ?2, ?3, ?3)",
+            rusqlite::params![id, title, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn rename_local_playlist(&self, id: &str, title: &str) -> rusqlite::Result<()> {
+        let conn = self.0.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE local_playlists SET title = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![id, title, now_secs()],
+        )?;
+        if changed == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        Ok(())
+    }
+
+    pub fn delete_local_playlist(&self, id: &str) -> rusqlite::Result<()> {
+        let mut conn = self.0.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM local_playlist_tracks WHERE playlist_id = ?1", [id])?;
+        let changed = tx.execute("DELETE FROM local_playlists WHERE id = ?1", [id])?;
+        if changed == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        tx.commit()
+    }
+
+    /// Add one track at the tail. False means this playlist already contains that video/file id.
+    pub fn add_local_playlist_track(
+        &self,
+        playlist_id: &str,
+        video_id: &str,
+        song_json: &str,
+    ) -> rusqlite::Result<bool> {
+        let mut conn = self.0.lock().unwrap();
+        let tx = conn.transaction()?;
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM local_playlists WHERE id = ?1)",
+            [playlist_id],
+            |r| r.get(0),
+        )?;
+        if !exists {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        let position: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM local_playlist_tracks WHERE playlist_id = ?1",
+            [playlist_id],
+            |r| r.get(0),
+        )?;
+        let changed = tx.execute(
+            "INSERT OR IGNORE INTO local_playlist_tracks(playlist_id, video_id, position, song_json)
+             VALUES(?1, ?2, ?3, ?4)",
+            rusqlite::params![playlist_id, video_id, position, song_json],
+        )?;
+        if changed > 0 {
+            tx.execute(
+                "UPDATE local_playlists SET updated_at = ?2 WHERE id = ?1",
+                rusqlite::params![playlist_id, now_secs()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(changed > 0)
+    }
+
+    pub fn remove_local_playlist_track(
+        &self,
+        playlist_id: &str,
+        video_id: &str,
+    ) -> rusqlite::Result<()> {
+        let mut conn = self.0.lock().unwrap();
+        let tx = conn.transaction()?;
+        let changed = tx.execute(
+            "DELETE FROM local_playlist_tracks WHERE playlist_id = ?1 AND video_id = ?2",
+            [playlist_id, video_id],
+        )?;
+        if changed > 0 {
+            tx.execute(
+                "UPDATE local_playlists SET updated_at = ?2 WHERE id = ?1",
+                rusqlite::params![playlist_id, now_secs()],
+            )?;
+        }
+        tx.commit()
+    }
+
+    pub fn local_playlist_track_json(&self, playlist_id: &str) -> Vec<String> {
+        let conn = self.0.lock().unwrap();
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT song_json FROM local_playlist_tracks
+             WHERE playlist_id = ?1 ORDER BY position ASC",
+        ) {
+            if let Ok(rows) = stmt.query_map([playlist_id], |r| r.get(0)) {
+                out.extend(rows.flatten());
+            }
+        }
+        out
+    }
+
+    fn local_playlist_memberships(&self) -> std::collections::HashMap<String, Vec<String>> {
+        let conn = self.0.lock().unwrap();
+        let mut out: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        if let Ok(mut stmt) =
+            conn.prepare("SELECT video_id, playlist_id FROM local_playlist_tracks")
+        {
+            if let Ok(rows) =
+                stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            {
+                for (video_id, playlist_id) in rows.flatten() {
+                    out.entry(video_id).or_default().push(playlist_id);
+                }
+            }
+        }
+        out
     }
 
     // --- local music library (local.rs) -------------------------------------------------------
@@ -599,6 +832,16 @@ const LOCAL_TRACK_UPSERT: &str =
         duration_secs = excluded.duration_secs, cover = excluded.cover, mtime = excluded.mtime";
 
 /// One file in the local library. Tag data as read at scan time; `mtime` is the change detector.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalPlaylist {
+    pub id: String,
+    pub title: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub track_count: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalTrack {
     pub path: String,
@@ -696,6 +939,46 @@ mod tests {
         assert_eq!(d.playlist_memberships().keys().collect::<Vec<_>>(), vec!["c"]);
         d.retain_playlists(&[]);
         assert!(d.playlist_memberships().is_empty());
+    }
+
+    #[test]
+    fn device_playlists_survive_account_index_clears_and_keep_order() {
+        let d = db();
+        let id = "RYOTUNES_LOCAL_PLAYLIST:test";
+        d.create_local_playlist(id, "Offline mix").unwrap();
+
+        assert!(d.add_local_playlist_track(id, "a", r#"{"video_id":"a"}"#).unwrap());
+        assert!(d.add_local_playlist_track(id, "b", r#"{"video_id":"b"}"#).unwrap());
+        assert!(
+            !d.add_local_playlist_track(id, "a", r#"{"video_id":"a"}"#).unwrap(),
+            "device playlists refuse duplicate track ids"
+        );
+        assert_eq!(
+            d.local_playlist_track_json(id),
+            vec![r#"{"video_id":"a"}"#.to_string(), r#"{"video_id":"b"}"#.to_string()],
+            "insertion order is stable"
+        );
+
+        d.set_playlist_tracks("VLACCOUNT", &["a".into()]);
+        let before = d.playlist_memberships();
+        assert!(before["a"].contains(&id.to_string()));
+        assert!(before["a"].contains(&"VLACCOUNT".to_string()));
+
+        d.clear_playlist_index();
+        let after = d.playlist_memberships();
+        assert_eq!(
+            after["a"],
+            vec![id.to_string()],
+            "sign-out/account reset clears only the YouTube-derived index"
+        );
+
+        d.rename_local_playlist(id, "Renamed").unwrap();
+        assert_eq!(d.local_playlist(id).unwrap().title, "Renamed");
+        d.remove_local_playlist_track(id, "a").unwrap();
+        assert_eq!(d.local_playlist_track_json(id), vec![r#"{"video_id":"b"}"#.to_string()]);
+        d.delete_local_playlist(id).unwrap();
+        assert!(d.local_playlist(id).is_none());
+        assert!(!d.playlist_memberships().contains_key("b"));
     }
 
     #[test]

@@ -75,6 +75,21 @@ const DURATION_GRACE: Duration = Duration::from_millis(800);
 const MIN_WAIT: Duration = Duration::from_millis(10);
 /// Discord rejects `details`/`state`/`large_text` outside 2–128 characters.
 const MAX_FIELD: usize = 128;
+pub const DEFAULT_PRESENCE_NAME: &str = "Music";
+
+/// Vanity text used by Discord's "Listening to …" activity label. Empty resets to the default;
+/// every non-empty value must satisfy Discord's 2–128 character field contract.
+pub fn normalize_presence_name(raw: &str) -> Result<String, String> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return Ok(DEFAULT_PRESENCE_NAME.into());
+    }
+    let len = value.chars().count();
+    if !(2..=MAX_FIELD).contains(&len) {
+        return Err("Discord presence title must be between 2 and 128 characters.".into());
+    }
+    Ok(value.to_owned())
+}
 /// Discord rejects asset URLs longer than this — better a text-only card than a rejected payload.
 const MAX_ASSET_URL: usize = 256;
 
@@ -89,6 +104,7 @@ enum Msg {
     /// A real play/pause transition (mpv's pause flag), never inferred from position ticks.
     Playing(bool),
     Enabled(bool),
+    Name(String),
     Shutdown(Sender<()>),
 }
 
@@ -145,6 +161,10 @@ impl DiscordHandle {
         let _ = self.tx.send(Msg::Enabled(on));
     }
 
+    pub fn set_name(&self, name: String) {
+        let _ = self.tx.send(Msg::Name(name));
+    }
+
     pub fn status(&self) -> &'static str {
         match self.status.load(Ordering::Acquire) {
             0 => "disabled",
@@ -165,19 +185,20 @@ impl DiscordHandle {
 
 /// Spawn the presence owner thread. `enabled` is the persisted `discord_rpc` setting — when off,
 /// the thread parks on the channel and never opens a socket.
-pub fn spawn(enabled: bool) -> Option<DiscordHandle> {
+pub fn spawn(enabled: bool, name: String) -> Option<DiscordHandle> {
     // Without a real app id there is nothing to connect *as*. Say so once, loudly, rather than
     // leaving a settings toggle that silently does nothing.
     if APP_ID.is_empty() || !APP_ID.bytes().all(|b| b.is_ascii_digit()) {
         tracing::warn!(APP_ID, "discord rich presence disabled: APP_ID is not a Discord app id");
         return None;
     }
+    let name = normalize_presence_name(&name).unwrap_or_else(|_| DEFAULT_PRESENCE_NAME.into());
     let (tx, rx) = channel::<Msg>();
     let status = Arc::new(AtomicU8::new(if enabled { 1 } else { 0 }));
     let thread_status = status.clone();
     match std::thread::Builder::new()
         .name("discord-rpc".into())
-        .spawn(move || run(rx, Presence::new(enabled, thread_status)))
+        .spawn(move || run(rx, Presence::new(enabled, name, thread_status)))
     {
         Ok(_) => Some(DiscordHandle { tx, status }),
         Err(e) => {
@@ -251,6 +272,7 @@ struct Presence {
     /// Grows on each failed connect, resets on success. See [`CONNECT_RETRY_MIN`].
     connect_backoff: Duration,
     // desired
+    name: String,
     track: Option<Track>,
     /// When the current track arrived — the duration grace runs from here.
     track_at: Instant,
@@ -266,6 +288,7 @@ struct Presence {
 
 struct Sent {
     video_id: String,
+    name: String,
     /// Epoch millis the pushed timeline started at — `now - start_ms` is where Discord's bar is.
     start_ms: i64,
     /// The length the pushed bar was built from; 0 when the card went out without one.
@@ -273,9 +296,10 @@ struct Sent {
 }
 
 impl Presence {
-    fn new(enabled: bool, status: Arc<AtomicU8>) -> Self {
+    fn new(enabled: bool, name: String, status: Arc<AtomicU8>) -> Self {
         Presence {
             enabled,
+            name,
             status,
             client: None,
             last_connect_try: None,
@@ -343,6 +367,11 @@ impl Presence {
                         // Allow an immediate retry when the user explicitly turns the feature on.
                         self.last_connect_try = None;
                     }
+                }
+            }
+            Msg::Name(name) => {
+                if self.name != name {
+                    self.name = name;
                 }
             }
             Msg::Shutdown(_) => unreachable!("shutdown is handled by the owner loop"),
@@ -417,7 +446,7 @@ impl Presence {
     fn wants_push(&self) -> bool {
         let Some(track) = &self.track else { return false };
         let Some(sent) = &self.sent else { return true };
-        if sent.video_id != track.video_id {
+        if sent.video_id != track.video_id || sent.name != self.name {
             return true;
         }
         // mpv reported the length, or refined it (streams get probed, then corrected) — the bar's
@@ -463,14 +492,16 @@ impl Presence {
             ts = ts.end(end);
         }
         let mut act = activity::Activity::new()
-            .name("Music")
+            .name(field(&self.name))
             .activity_type(activity::ActivityType::Listening)
             .status_display_type(activity::StatusDisplayType::State)
             .details(field(&track.title))
             .timestamps(ts);
         // A local file has no YouTube page to link, and its id is a path — never put it in a URL.
         let mut buttons = Vec::new();
-        if !crate::local::is_local_song(&track.video_id) {
+        if !crate::local::is_local_song(&track.video_id)
+            && !crate::radio::is_radio_id(&track.video_id)
+        {
             buttons.push(activity::Button::new(
                 "Listen on YouTube Music",
                 format!("{SONG_URL}{}", track.video_id),
@@ -500,7 +531,12 @@ impl Presence {
             // Recorded even if Discord rejected the payload (warn-logged in check_response):
             // retrying an identical rejected frame in a loop helps nobody; the next real change
             // sends a fresh one.
-            self.sent = Some(Sent { video_id: track.video_id, start_ms, duration: self.duration });
+            self.sent = Some(Sent {
+                video_id: track.video_id,
+                name: self.name.clone(),
+                start_ms,
+                duration: self.duration,
+            });
             self.client = Some(client);
         } else {
             // Broken socket — Discord quit. Drop it; the reconnect tick picks it back up.
@@ -651,7 +687,11 @@ mod tests {
     }
 
     fn playing(id: &str, pos: f64) -> Presence {
-        let mut p = Presence::new(true, std::sync::Arc::new(std::sync::atomic::AtomicU8::new(1)));
+        let mut p = Presence::new(
+            true,
+            DEFAULT_PRESENCE_NAME.into(),
+            std::sync::Arc::new(std::sync::atomic::AtomicU8::new(1)),
+        );
         p.apply(Msg::Track(track(id)));
         p.apply(Msg::Playing(true));
         p.apply(Msg::Position { pos, at: Instant::now() });
@@ -663,6 +703,7 @@ mod tests {
     fn sent_now(p: &mut Presence, pos_secs: i64) {
         p.sent = Some(Sent {
             video_id: p.track.as_ref().unwrap().video_id.clone(),
+            name: p.name.clone(),
             start_ms: now_ms() - pos_secs * 1000,
             duration: p.duration,
         });
@@ -694,7 +735,12 @@ mod tests {
         assert_eq!(p.plan(), Act::Push, "with the length known, push immediately");
 
         // That single push carries the bar; nothing further is pending.
-        p.sent = Some(Sent { video_id: "new".into(), start_ms: now_ms(), duration: 185.0 });
+        p.sent = Some(Sent {
+            video_id: "new".into(),
+            name: p.name.clone(),
+            start_ms: now_ms(),
+            duration: 185.0,
+        });
         p.last_send = Some(Instant::now());
         assert_eq!(p.plan(), Act::Idle, "one push per track change, not two");
     }
@@ -802,7 +848,11 @@ mod tests {
     /// often just slower to start than we are.
     #[test]
     fn a_failed_connect_retries_soon_then_backs_off() {
-        let mut p = Presence::new(true, std::sync::Arc::new(std::sync::atomic::AtomicU8::new(1)));
+        let mut p = Presence::new(
+            true,
+            DEFAULT_PRESENCE_NAME.into(),
+            std::sync::Arc::new(std::sync::atomic::AtomicU8::new(1)),
+        );
         assert!(p.connect_backoff_remaining().is_none(), "never tried — try now");
 
         p.last_connect_try = Some(Instant::now()); // as ensure_connected does on failure
@@ -812,6 +862,19 @@ mod tests {
         p.connect_backoff = CONNECT_RETRY_MAX; // after repeated failures
         p.last_connect_try = Some(Instant::now() - CONNECT_RETRY_MAX);
         assert!(p.connect_backoff_remaining().is_none(), "the backoff still lets retries through");
+    }
+
+    #[test]
+    fn custom_name_is_validated_and_marks_the_card_dirty() {
+        assert_eq!(normalize_presence_name("").unwrap(), DEFAULT_PRESENCE_NAME);
+        assert!(normalize_presence_name("x").is_err());
+        assert!(normalize_presence_name(&"x".repeat(129)).is_err());
+
+        let mut p = playing("a", 10.0);
+        sent_now(&mut p, 10);
+        assert!(!p.wants_push());
+        p.apply(Msg::Name("Ryotunes".into()));
+        assert!(p.wants_push(), "changing only the vanity title must refresh Discord");
     }
 
     #[test]

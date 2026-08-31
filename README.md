@@ -28,7 +28,7 @@
 
 <img width="3369" height="2017" alt="2026_08_27_02_44_21_screenshot" src="https://github.com/user-attachments/assets/44aaf6cc-f88e-4c1d-97ff-c44e45d4c72b" width="100%"/>
 
-<p align="center"><sub>Repository artwork based on the live v2.3 Home layout and Ryoku visual language.</sub></p>
+<p align="center"><sub>Repository artwork based on the live v2.4 Home layout and Ryoku visual language.</sub></p>
 
 ---
 
@@ -72,12 +72,13 @@ During background playback, the expensive visible WebKit surface can be **destro
 |---|---|
 | **Home** | Stable, non-virtualized sections, listening console, recommendations and progressive loading without scroll-jitter regressions |
 | **Search** | Songs, albums, artists and playlists with bounded incremental loading and preserved navigation state |
-| **Library** | Liked music, playlists and local music in the same desktop flow |
+| **Library** | Liked music, account playlists, persistent device playlists and local music in the same desktop flow |
+| **Radio** | Demand-driven Internet Radio directory with native libmpv live-stream playback |
 | **Now Playing** | Artwork-first playback surface with queue, metadata and lyrics access |
 | **Lyrics** | Synced lyrics with click-to-seek and mini-player follow mode |
 | **Queue** | Manual queue control plus radio / continuation behaviour |
 | **Mini-player** | A separate compact Ryoku surface with its own exact Hyprland title and independent geometry |
-| **Integrations** | MPRIS, hardware media keys, tray, Last.fm, Discord Rich Presence and optional Listen Together |
+| **Integrations** | MPRIS, hardware media keys, tray, Last.fm, configurable Discord Rich Presence and optional Listen Together |
 
 ---
 
@@ -148,7 +149,8 @@ Ryotunes treats background efficiency as an architectural requirement, not a cle
 - main WebKit hibernation during background playback;
 - stable Home DOM — physical Home virtualization is deliberately avoided;
 - bounded artwork decode/cache paths;
-- native playback state remains authoritative across close, tray, mini-player and reopen transitions.
+- native playback state remains authoritative across close, tray, mini-player and reopen transitions;
+- Internet Radio discovery is demand-driven — no startup fetch or permanent station polling loop.
 
 The design rules behind the interface are documented in **[docs/DESIGN.md](docs/DESIGN.md)**.
 
@@ -156,25 +158,25 @@ The design rules behind the interface are documented in **[docs/DESIGN.md](docs/
 
 ## Install
 
-Ryotunes v2.3 targets **x86_64 Ryoku, CachyOS and Arch-based systems**.
+Ryotunes v2.4 targets **x86_64 Ryoku, CachyOS and Arch-based systems**.
 
-Package identity: **`ryotunes-v2.3 2.3.0-1`**.
+Package identity: **`ryotunes-v2.4 2.4.0-1`**.
 
 The normal user path is a **prebuilt package**. End users do not need Node, pnpm, Rust, Cargo or a local Tauri build.
 
 1. Open **[GitHub Releases](https://github.com/ashmitvoid/ryotunes/releases/latest)**.
-2. Download `ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst`.
+2. Download `ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst`.
 3. Install:
 
 ```bash
-sudo pacman -U ./ryotunes-v2.3-2.3.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst
 ```
 
 The active route is:
 
 ```text
 /usr/bin/ryotunes
-  -> /usr/lib/ryotunes-v2.3/ryotunes
+  -> /usr/lib/ryotunes-v2.4/ryotunes
 ```
 
 The replacement package preserves genuine stock Ryotunes entry points for rollback and restores them when the custom package is removed.

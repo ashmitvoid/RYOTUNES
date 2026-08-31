@@ -10,9 +10,9 @@ use innertube::{
 use tauri::{Emitter, State};
 
 use crate::state::{
-    is_smart_playlist_id, AppState, ON_REPEAT_ID, ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS,
-    RECENTLY_PLAYED_ID, RECENTLY_PLAYED_WINDOW_SECS, REDISCOVER_ID, REDISCOVER_OLDER_THAN_SECS,
-    SMART_PLAYLIST_LIMIT,
+    is_local_playlist_id, is_smart_playlist_id, AppState, LOCAL_PLAYLIST_PREFIX, ON_REPEAT_ID,
+    ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS, RECENTLY_PLAYED_ID, RECENTLY_PLAYED_WINDOW_SECS,
+    REDISCOVER_ID, REDISCOVER_OLDER_THAN_SECS, SMART_PLAYLIST_LIMIT,
 };
 
 type St<'a> = State<'a, Arc<AppState>>;
@@ -242,13 +242,14 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
 /// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
 /// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 13] = [
+const UI_SETTINGS: [&str; 14] = [
     "volume",
     "proxy",
     "quality",
     "enable_history",
     "disabled_stream_clients",
     "discord_rpc",
+    "discord_presence_name",
     "close_to_tray",
     "autostart",
     "autoplay",
@@ -322,6 +323,13 @@ pub async fn set_setting(
             return Err("autostart registration did not reach the requested state".into());
         }
         state.db.set_setting("autostart", if actual { "true" } else { "false" });
+        return Ok(());
+    }
+
+    if key == "discord_presence_name" {
+        let name = crate::discord::normalize_presence_name(&value)?;
+        state.db.set_setting(&key, &name);
+        state.set_discord_name(name);
         return Ok(());
     }
 
@@ -506,6 +514,16 @@ pub async fn get_library(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
         items.insert(at, smart_playlist_card(REDISCOVER_ID, "Rediscover", &rediscover));
     }
 
+    // Device playlists are independent of Google sign-in. Keep smart playlists first, then put
+    // playlists created on this machine ahead of account rows so the signed-out Library is useful
+    // rather than an empty instruction screen.
+    let device: Vec<BrowseItem> =
+        state.db.local_playlists().into_iter().map(local_playlist_card).collect();
+    let smart_count = usize::from(!songs.is_empty())
+        + usize::from(!recent.is_empty())
+        + usize::from(!rediscover.is_empty());
+    items.splice(smart_count..smart_count, device);
+
     // A card has nowhere to put two images, so a custom cover simply is the artwork here.
     for item in &mut items {
         if let Some(cover) = custom_cover(&state, &item.id) {
@@ -547,6 +565,10 @@ pub async fn get_playlist(
     sort: Option<PlaylistSort>,
     desc: Option<bool>,
 ) -> Result<PlaylistPage, String> {
+    if is_local_playlist_id(&id) {
+        return local_playlist_page(&state, &id)
+            .ok_or_else(|| "That device playlist no longer exists.".to_string());
+    }
     if id == ON_REPEAT_ID {
         let items = on_repeat_songs(&state);
         return Ok(PlaylistPage {
@@ -755,6 +777,60 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
+fn local_playlist_card(row: crate::db::LocalPlaylist) -> BrowseItem {
+    BrowseItem {
+        kind: "playlist",
+        id: row.id,
+        title: row.title,
+        subtitle: Some(format!(
+            "{} track{} · On this device",
+            row.track_count,
+            if row.track_count == 1 { "" } else { "s" }
+        )),
+        thumbnail: None,
+        duration: None,
+        artist_runs: Vec::new(),
+        play_count: None,
+        is_video: false,
+        is_upload: false,
+        explicit: false,
+    }
+}
+
+fn local_playlist_page(state: &Arc<AppState>, id: &str) -> Option<PlaylistPage> {
+    let row = state.db.local_playlist(id)?;
+    let items: Vec<SongItem> = state
+        .db
+        .local_playlist_track_json(id)
+        .into_iter()
+        .filter_map(|json| serde_json::from_str::<SongItem>(&json).ok())
+        .map(|song| {
+            let mut song = shed_queue_context(song);
+            // The playlist page uses this field only as a per-row "removable" marker. Device
+            // playlists remove by video/file id, so the id itself is a stable local marker.
+            song.set_video_id = Some(song.video_id.clone());
+            song
+        })
+        .collect();
+    Some(PlaylistPage {
+        title: Some(row.title),
+        subtitle: Some(format!(
+            "{} track{} · Stored on this device",
+            items.len(),
+            if items.len() == 1 { "" } else { "s" }
+        )),
+        thumbnail: items.iter().find_map(|song| song.thumbnail.clone()),
+        description: None,
+        privacy: None,
+        cover: custom_cover(state, id),
+        items,
+        continuation: None,
+        owned: true,
+        collaborative: false,
+        sort_menu: None,
+    })
+}
+
 #[tauri::command]
 pub async fn get_playlist_more(
     state: St<'_>,
@@ -816,6 +892,9 @@ pub async fn play_playlist(
     shuffle: Option<bool>,
     continuation: Option<String>,
 ) -> Result<(), String> {
+    // A device playlist is a local container, not a YouTube playlist seed. Passing its synthetic
+    // id as radio_seed would make queue exhaustion try a YouTube /next request with that id.
+    let source_id = source_id.filter(|id| !is_local_playlist_id(id));
     let state = state.inner().clone();
     state
         .play_tracks(items, start, source_id, source_name, shuffle.unwrap_or(false), continuation)
@@ -836,8 +915,30 @@ pub async fn start_radio(
     id: String,
     name: Option<String>,
 ) -> Result<(), String> {
+    if crate::radio::is_radio_id(&id) || is_local_playlist_id(&id) {
+        return Err("This item does not have a YouTube Music radio seed.".into());
+    }
     let state = state.inner().clone();
     state.start_radio(&kind, &id, name).await
+}
+
+// --- Internet Radio --------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn radio_stations(
+    query: Option<String>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<Vec<crate::radio::RadioStation>, String> {
+    crate::radio::stations(query.as_deref(), offset.unwrap_or(0), limit.unwrap_or(36)).await
+}
+
+#[tauri::command]
+pub async fn play_radio_station(
+    state: St<'_>,
+    station: crate::radio::RadioStation,
+) -> Result<(), String> {
+    state.inner().clone().play_radio_station(station).await
 }
 
 // --- portable playlist transfer ---------------------------------------------------------------
@@ -922,6 +1023,9 @@ fn require_login(state: &Arc<AppState>) -> Result<&innertube::YouTubeClient, Str
 /// mutually exclusive, so a dislike un-likes in the same call and the UI never has to send two.
 #[tauri::command]
 pub async fn rate(state: St<'_>, video_id: String, rating: Rating) -> Result<(), String> {
+    if crate::radio::is_radio_id(&video_id) || crate::local::is_local_song(&video_id) {
+        return Err("This track does not have a YouTube Music rating.".into());
+    }
     let client = require_login(&state)?;
     // Any detached refresh already in flight was asked before this write existed.
     state.rate_epoch.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -988,7 +1092,7 @@ pub async fn sync_playlist_index(
 ) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
     if !state.it.is_logged_in() {
         state.db.clear_playlist_index();
-        return Ok(std::collections::HashMap::new());
+        return Ok(state.db.playlist_memberships());
     }
     let fresh_until = state
         .db
@@ -1037,6 +1141,28 @@ pub async fn sync_playlist_index(
     Ok(state.db.playlist_memberships())
 }
 
+/// Add a complete track snapshot to a playlist stored on this device. Keeping the whole SongItem
+/// means the list can reopen while signed out/offline without a metadata request.
+#[tauri::command]
+pub fn add_to_local_playlist(
+    state: St<'_>,
+    playlist_id: String,
+    item: SongItem,
+) -> Result<bool, String> {
+    if !is_local_playlist_id(&playlist_id) {
+        return Err("not a device playlist".into());
+    }
+    if crate::radio::is_radio_id(&item.video_id) {
+        return Err("Live radio stations cannot be added to song playlists.".into());
+    }
+    let item = shed_queue_context(item);
+    let json = serde_json::to_string(&item).map_err(|e| e.to_string())?;
+    state
+        .db
+        .add_local_playlist_track(&playlist_id, &item.video_id, &json)
+        .map_err(|e| format!("device playlist: {e}"))
+}
+
 /// `false` means the playlist already had the track and YouTube added nothing — not an error, but
 /// the UI must not draw an optimistic row for it (there is no real row to remove later).
 #[tauri::command]
@@ -1045,6 +1171,9 @@ pub async fn add_to_playlist(
     playlist_id: String,
     video_id: String,
 ) -> Result<bool, String> {
+    if crate::radio::is_radio_id(&video_id) {
+        return Err("Live radio stations cannot be added to song playlists.".into());
+    }
     let client = editable_playlist(&state, &playlist_id)?;
     let added =
         state.it.playlist_add(client, &playlist_id, &video_id).await.map_err(|e| e.to_string())?;
@@ -1061,6 +1190,12 @@ pub async fn remove_from_playlist(
     video_id: String,
     set_video_id: String,
 ) -> Result<(), String> {
+    if is_local_playlist_id(&playlist_id) {
+        return state
+            .db
+            .remove_local_playlist_track(&playlist_id, &video_id)
+            .map_err(|e| format!("device playlist: {e}"));
+    }
     let client = editable_playlist(&state, &playlist_id)?;
     state
         .it
@@ -1073,8 +1208,21 @@ pub async fn remove_from_playlist(
 
 #[tauri::command]
 pub async fn create_playlist(state: St<'_>, title: String) -> Result<String, String> {
-    let client = require_login(&state)?;
-    state.it.create_playlist(client, &title).await.map_err(|e| e.to_string())
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("Playlist name cannot be empty.".into());
+    }
+    let title: String = title.chars().take(150).collect();
+    if state.it.is_logged_in() {
+        let client = require_login(&state)?;
+        return state.it.create_playlist(client, &title).await.map_err(|e| e.to_string());
+    }
+
+    // Random suffix avoids collisions between rapid creates while the wall-clock prefix keeps ids
+    // debuggable. It is an internal namespace, never sent to YouTube.
+    let id = format!("{LOCAL_PLAYLIST_PREFIX}{}-{:016x}", now_secs(), rand::random::<u64>());
+    state.db.create_local_playlist(&id, &title).map_err(|e| format!("device playlist: {e}"))?;
+    Ok(id)
 }
 
 /// Edit a playlist you own, from the "Edit playlist" dialog: name, description, visibility.
@@ -1089,6 +1237,23 @@ pub async fn edit_playlist_details(
     description: Option<String>,
     public: Option<bool>,
 ) -> Result<(), String> {
+    if is_local_playlist_id(&playlist_id) {
+        if description.is_some() || public.is_some() {
+            return Err("Device playlists only store a name and local artwork.".into());
+        }
+        if let Some(name) = name {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err("Playlist name cannot be empty.".into());
+            }
+            let name: String = name.chars().take(150).collect();
+            state
+                .db
+                .rename_local_playlist(&playlist_id, &name)
+                .map_err(|e| format!("device playlist: {e}"))?;
+        }
+        return Ok(());
+    }
     let client = editable_playlist(&state, &playlist_id)?;
     // The switch is two-state; YouTube's third value (UNLISTED) is only ever left as it was.
     let privacy = public.map(|p| if p { "PUBLIC" } else { "PRIVATE" });
@@ -1214,7 +1379,10 @@ pub struct CoverResult {
 /// playlist's cover on this machine. Signed out (or On Repeat, which YouTube has never heard of),
 /// there is nothing to sync and local is all there ever was.
 fn sync_cover(state: &Arc<AppState>, playlist_id: &str, path: String) {
-    if is_smart_playlist_id(playlist_id) || !state.it.is_logged_in() {
+    if is_smart_playlist_id(playlist_id)
+        || is_local_playlist_id(playlist_id)
+        || !state.it.is_logged_in()
+    {
         return;
     }
     let state = Arc::clone(state);
@@ -1252,7 +1420,10 @@ async fn clear_cover_on_youtube(
     state: &Arc<AppState>,
     playlist_id: &str,
 ) -> Result<Option<String>, String> {
-    if is_smart_playlist_id(playlist_id) || !state.it.is_logged_in() {
+    if is_smart_playlist_id(playlist_id)
+        || is_local_playlist_id(playlist_id)
+        || !state.it.is_logged_in()
+    {
         return Ok(None);
     }
     let client = metadata_client(state)?;
@@ -1279,6 +1450,15 @@ fn custom_cover(state: &Arc<AppState>, playlist_id: &str) -> Option<String> {
 
 #[tauri::command]
 pub async fn delete_playlist(state: St<'_>, playlist_id: String) -> Result<(), String> {
+    if is_local_playlist_id(&playlist_id) {
+        state
+            .db
+            .delete_local_playlist(&playlist_id)
+            .map_err(|e| format!("device playlist: {e}"))?;
+        state.db.delete_setting(&cover_key(&playlist_id));
+        state.db.delete_setting(&synced_key(&playlist_id));
+        return Ok(());
+    }
     let client = editable_playlist(&state, &playlist_id)?;
     state.it.delete_playlist(client, &playlist_id).await.map_err(|e| e.to_string())?;
     state.db.forget_playlist(&playlist_id);
@@ -1437,6 +1617,9 @@ pub async fn get_lyrics(
     album: Option<String>,
     duration: Option<f64>,
 ) -> Result<Option<crate::lyrics::Lyrics>, String> {
+    if crate::radio::is_radio_id(&video_id) {
+        return Ok(None);
+    }
     Ok(crate::lyrics::get_lyrics(
         state.inner(),
         crate::lyrics::LyricsRequest { video_id, title, artists, album, duration },

@@ -57,7 +57,11 @@
 	);
 	// Radio and Share both need a YouTube item behind them: local folders and the locally-built
 	// On Repeat have none.
-	const onYouTube = $derived(!api.isLocalId(item.id) && !api.isSmartPlaylistId(item.id));
+	const onYouTube = $derived(
+		!api.isLocalId(item.id) &&
+			!api.isLocalPlaylistId(item.id) &&
+			!api.isSmartPlaylistId(item.id)
+	);
 	// An artist isn't a track list — there's nothing unambiguous to queue. Songs, albums and
 	// playlists (local ones included) all are.
 	const canQueue = $derived(item.kind === 'song' || item.kind === 'album' || item.kind === 'playlist');
