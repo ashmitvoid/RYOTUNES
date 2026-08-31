@@ -687,7 +687,11 @@ mod tests {
     }
 
     fn playing(id: &str, pos: f64) -> Presence {
-        let mut p = Presence::new(true, std::sync::Arc::new(std::sync::atomic::AtomicU8::new(1)));
+        let mut p = Presence::new(
+            true,
+            DEFAULT_PRESENCE_NAME.into(),
+            std::sync::Arc::new(std::sync::atomic::AtomicU8::new(1)),
+        );
         p.apply(Msg::Track(track(id)));
         p.apply(Msg::Playing(true));
         p.apply(Msg::Position { pos, at: Instant::now() });
@@ -699,6 +703,7 @@ mod tests {
     fn sent_now(p: &mut Presence, pos_secs: i64) {
         p.sent = Some(Sent {
             video_id: p.track.as_ref().unwrap().video_id.clone(),
+            name: p.name.clone(),
             start_ms: now_ms() - pos_secs * 1000,
             duration: p.duration,
         });
@@ -838,7 +843,11 @@ mod tests {
     /// often just slower to start than we are.
     #[test]
     fn a_failed_connect_retries_soon_then_backs_off() {
-        let mut p = Presence::new(true, std::sync::Arc::new(std::sync::atomic::AtomicU8::new(1)));
+        let mut p = Presence::new(
+            true,
+            DEFAULT_PRESENCE_NAME.into(),
+            std::sync::Arc::new(std::sync::atomic::AtomicU8::new(1)),
+        );
         assert!(p.connect_backoff_remaining().is_none(), "never tried — try now");
 
         p.last_connect_try = Some(Instant::now()); // as ensure_connected does on failure
@@ -848,6 +857,19 @@ mod tests {
         p.connect_backoff = CONNECT_RETRY_MAX; // after repeated failures
         p.last_connect_try = Some(Instant::now() - CONNECT_RETRY_MAX);
         assert!(p.connect_backoff_remaining().is_none(), "the backoff still lets retries through");
+    }
+
+    #[test]
+    fn custom_name_is_validated_and_marks_the_card_dirty() {
+        assert_eq!(normalize_presence_name("").unwrap(), DEFAULT_PRESENCE_NAME);
+        assert!(normalize_presence_name("x").is_err());
+        assert!(normalize_presence_name(&"x".repeat(129)).is_err());
+
+        let mut p = playing("a", 10.0);
+        sent_now(&mut p, 10);
+        assert!(!p.wants_push());
+        p.apply(Msg::Name("Ryotunes".into()));
+        assert!(p.wants_push(), "changing only the vanity title must refresh Discord");
     }
 
     #[test]
