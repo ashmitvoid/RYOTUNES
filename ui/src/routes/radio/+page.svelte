@@ -350,7 +350,7 @@
 		object-fit: cover;
 		background: hsl(var(--muted));
 	}
-	.radio-art-fallback {
+	:global(.radio-art-fallback) {
 		width: 1.25rem;
 		height: 1.25rem;
 		color: hsl(var(--muted-foreground));
