@@ -273,9 +273,15 @@
 	}
 
 	async function saveProxy() {
-		settings.proxy = proxyInput.trim();
-		await api.setSetting('proxy', settings.proxy);
-		toast.success('Proxy saved — restart to apply');
+		const value = proxyInput.trim();
+		try {
+			await api.setSetting('proxy', value);
+			settings.proxy = value;
+			proxyInput = value;
+			toast.success('Proxy saved — restart to apply');
+		} catch (e) {
+			toast.error(String(e));
+		}
 	}
 
 	async function doClearCaches() {
@@ -537,7 +543,7 @@
 					<div class="border-b py-3">
 						<div class="font-medium">Proxy</div>
 						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							HTTP/SOCKS proxy for all YouTube traffic. Takes effect on restart.
+							HTTP or HTTPS proxy for all YouTube traffic. Takes effect on restart.
 						</p>
 						<form
 							class="flex gap-2"

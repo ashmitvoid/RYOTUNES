@@ -6,8 +6,9 @@
 //! (for example `0.0.0.0:8080`) when intentionally exposing it to a LAN or reverse proxy.
 //! TLS is terminated by the reverse proxy, so the server itself stays transport-only.
 //!
-//! Note: one global `Mutex<HashMap<room, Room>>` and unbounded per-client channels — right for
-//! a personal server (tens of users). If it ever needs to scale, shard by room / add backpressure.
+//! The relay is intentionally small/self-hosted, but all attacker-controlled retained state and
+//! WebSocket frames are bounded. If it ever needs to scale beyond personal/community use, shard
+//! room state and add process-level connection/rate limits at the reverse proxy.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,15 +21,34 @@ use listen_protocol::{
 use rand::Rng;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{protocol::WebSocketConfig, Message};
 
 /// How long a dropped participant's slot (and session token) survives for reconnection.
 const RECONNECT_GRACE: Duration = Duration::from_secs(120);
 const MAX_USERS_PER_ROOM: usize = 50;
+const MAX_ROOMS: usize = 256;
+const MAX_QUEUE_TRACKS: usize = 1_000;
+const MAX_SUGGESTIONS_PER_ROOM: usize = 100;
+const MAX_WS_MESSAGE_BYTES: usize = 512 * 1024;
+const MAX_WS_FRAME_BYTES: usize = 256 * 1024;
+const OUTBOUND_QUEUE_CAPACITY: usize = 128;
+const MAX_TRACK_ID_BYTES: usize = 256;
+const MAX_TRACK_TEXT_BYTES: usize = 512;
+const MAX_THUMBNAIL_BYTES: usize = 2_048;
 /// Room code alphabet — no `I`/`O` to avoid confusion (session protocol §2.2).
 const CODE_ALPHABET: &[u8] = b"1234567890QWERTYUPASDFGHJKLZXCVBNM";
 
-type Tx = mpsc::UnboundedSender<ServerMessage>;
+#[derive(Clone)]
+struct Tx(mpsc::Sender<ServerMessage>);
+
+impl Tx {
+    fn send(
+        &self,
+        message: ServerMessage,
+    ) -> Result<(), mpsc::error::TrySendError<ServerMessage>> {
+        self.0.try_send(message)
+    }
+}
 
 struct Peer {
     username: String,
@@ -146,6 +166,43 @@ fn err(code: &str, message: &str) -> ServerMessage {
     ServerMessage::Error { code: code.into(), message: message.into() }
 }
 
+fn bounded_text(value: &str, max_bytes: usize) -> bool {
+    value.len() <= max_bytes && !value.chars().any(char::is_control)
+}
+
+fn bounded_track(track: &Track) -> bool {
+    !track.id.is_empty()
+        && bounded_text(&track.id, MAX_TRACK_ID_BYTES)
+        && bounded_text(&track.title, MAX_TRACK_TEXT_BYTES)
+        && bounded_text(&track.artist, MAX_TRACK_TEXT_BYTES)
+        && track.duration_ms >= 0
+        && track.thumbnail.as_deref().is_none_or(|url| {
+            url.len() <= MAX_THUMBNAIL_BYTES
+                && (url.starts_with("https://") || url.starts_with("http://"))
+        })
+        && track
+            .queued_by
+            .as_deref()
+            .is_none_or(|name| bounded_text(name, 50))
+}
+
+fn bounded_playback(playback: &listen_protocol::Playback) -> bool {
+    if playback.position_ms < 0 {
+        return false;
+    }
+    if playback.kind == PlaybackKind::SetVolume
+        && (!playback.volume.is_finite() || !(0.0..=1.0).contains(&playback.volume))
+    {
+        return false;
+    }
+    if playback.track.as_ref().is_some_and(|track| !bounded_track(track)) {
+        return false;
+    }
+    playback.queue.as_ref().is_none_or(|queue| {
+        queue.len() <= MAX_QUEUE_TRACKS && queue.iter().all(bounded_track)
+    })
+}
+
 impl Server {
     /// Handle one decoded message. `uid`/`room_code` track this connection's identity and are
     /// updated in place as it creates/joins/reconnects.
@@ -163,6 +220,10 @@ impl Server {
 
             ClientMessage::CreateRoom { username } => {
                 let mut rooms = self.rooms.lock().await;
+                if rooms.len() >= MAX_ROOMS {
+                    let _ = tx.send(err("server_full", "This relay has reached its room limit."));
+                    return;
+                }
                 let code = loop {
                     let c = gen_code();
                     if !rooms.contains_key(&c) {
@@ -296,6 +357,10 @@ impl Server {
             }
 
             ClientMessage::Playback(mut p) => {
+                if !bounded_playback(&p) {
+                    let _ = tx.send(err("invalid_playback", "Playback payload exceeds relay limits."));
+                    return;
+                }
                 let (Some(me), Some(code)) = (uid.clone(), room_code.clone()) else { return };
                 let mut rooms = self.rooms.lock().await;
                 let Some(room) = rooms.get_mut(&code) else { return };
@@ -358,11 +423,22 @@ impl Server {
             }
 
             ClientMessage::Suggest { track } => {
+                if !bounded_track(&track) {
+                    let _ = tx.send(err("invalid_track", "Suggested track exceeds relay limits."));
+                    return;
+                }
                 let (Some(me), Some(code)) = (uid.clone(), room_code.clone()) else { return };
                 let mut rooms = self.rooms.lock().await;
                 let Some(room) = rooms.get_mut(&code) else { return };
                 if room.is_host(&me) {
                     return; // host adds tracks directly
+                }
+                if room.suggestions.len() >= MAX_SUGGESTIONS_PER_ROOM {
+                    let _ = tx.send(err(
+                        "suggestions_full",
+                        "This room has too many pending suggestions.",
+                    ));
+                    return;
                 }
                 let Some(peer) = room.peers.get(&me) else { return };
                 let suggestion = Suggestion {
@@ -576,7 +652,13 @@ fn sanitize(s: &str) -> String {
 }
 
 async fn handle_conn(stream: TcpStream, server: Arc<Server>) {
-    let ws = match tokio_tungstenite::accept_async(stream).await {
+    let config = WebSocketConfig::default()
+        .read_buffer_size(16 * 1024)
+        .write_buffer_size(16 * 1024)
+        .max_write_buffer_size(MAX_WS_MESSAGE_BYTES + 32 * 1024)
+        .max_message_size(Some(MAX_WS_MESSAGE_BYTES))
+        .max_frame_size(Some(MAX_WS_FRAME_BYTES));
+    let ws = match tokio_tungstenite::accept_async_with_config(stream, Some(config)).await {
         Ok(ws) => ws,
         Err(e) => {
             tracing::debug!(error = %e, "ws handshake failed");
@@ -584,9 +666,11 @@ async fn handle_conn(stream: TcpStream, server: Arc<Server>) {
         }
     };
     let (mut sink, mut read) = ws.split();
-    let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
+    let (raw_tx, mut rx) = mpsc::channel::<ServerMessage>(OUTBOUND_QUEUE_CAPACITY);
+    let tx = Tx(raw_tx);
 
-    // Writer task: drain outbound messages to the socket.
+    // Writer task: drain the bounded outbound queue. Slow/broken clients cannot accumulate
+    // unbounded room state in the relay process.
     let writer = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             if sink.send(Message::Text(msg.to_json())).await.is_err() {
@@ -658,8 +742,43 @@ mod tests {
     use super::*;
     use listen_protocol::Playback;
 
-    fn dummy_tx() -> (Tx, mpsc::UnboundedReceiver<ServerMessage>) {
-        mpsc::unbounded_channel()
+    fn dummy_tx() -> (Tx, mpsc::Receiver<ServerMessage>) {
+        let (tx, rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
+        (Tx(tx), rx)
+    }
+
+    #[test]
+    fn relay_rejects_oversized_track_and_queue_payloads() {
+        let valid = Track {
+            id: "vid".into(),
+            title: "title".into(),
+            artist: "artist".into(),
+            thumbnail: Some("https://i.ytimg.com/vi/vid/hqdefault.jpg".into()),
+            duration_ms: 180_000,
+            queued_by: None,
+        };
+        assert!(bounded_track(&valid));
+
+        let mut oversized = valid.clone();
+        oversized.title = "x".repeat(MAX_TRACK_TEXT_BYTES + 1);
+        assert!(!bounded_track(&oversized));
+
+        let mut playback = listen_protocol::Playback::new(PlaybackKind::SyncQueue);
+        playback.queue = Some(vec![valid; MAX_QUEUE_TRACKS + 1]);
+        assert!(!bounded_playback(&playback));
+    }
+
+    #[test]
+    fn relay_rejects_non_web_thumbnail_schemes() {
+        let track = Track {
+            id: "vid".into(),
+            title: "title".into(),
+            artist: "artist".into(),
+            thumbnail: Some("file:///etc/passwd".into()),
+            duration_ms: 1,
+            queued_by: None,
+        };
+        assert!(!bounded_track(&track));
     }
 
     #[tokio::test]

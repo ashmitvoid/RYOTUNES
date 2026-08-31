@@ -60,6 +60,7 @@ local_rs = read('src-tauri/src/local.rs')
 default_cap = json.loads(read('src-tauri/capabilities/default.json'))
 mini_cap = json.loads(read('src-tauri/capabilities/mini.json'))
 security_workflow = read('.github/workflows/security.yml')
+sync_server = read('crates/sync-server/src/main.rs')
 
 # --- frozen v2.4 identity ----------------------------------------------------
 req('version = "2.4.0"' in cargo, 'workspace version is not 2.4.0')
@@ -103,6 +104,12 @@ req(mini_cap.get('windows') == ['mini'] and 'dialog:allow-open' not in mini_cap.
     'mini player has unnecessary file-dialog capability')
 req('cargo audit' in security_workflow and 'pnpm audit' in security_workflow,
     'scheduled dependency security audit workflow missing')
+req('accept_async_with_config' in sync_server and 'MAX_WS_MESSAGE_BYTES' in sync_server,
+    'Listen Together relay WebSocket message limits missing')
+req('MAX_QUEUE_TRACKS' in sync_server and 'MAX_SUGGESTIONS_PER_ROOM' in sync_server,
+    'Listen Together retained room-state limits missing')
+req('mpsc::channel::<ServerMessage>(OUTBOUND_QUEUE_CAPACITY)' in sync_server,
+    'Listen Together relay outbound channel is unbounded')
 req("DEFAULT_PRESENCE_NAME: &str = \"Ryotunes\"" in read('src-tauri/src/discord.rs'),
     'Discord default presence title is not Ryotunes')
 

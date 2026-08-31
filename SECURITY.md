@@ -34,6 +34,9 @@ origins on affected platforms).
   storage; watched music directories are not recursively exposed to the renderer.
 - Account cookies, delegated YouTube identity values, visitor data, queue internals and stream URLs
   are deliberately excluded from the settings IPC API.
+- The optional Listen Together relay bounds WebSocket frame/message sizes, room count, queue length,
+  pending suggestions and each client's outbound queue. It binds to localhost by default; use a TLS
+  reverse proxy when deliberately exposing it as a public `wss://` endpoint.
 
 ### CSP note
 

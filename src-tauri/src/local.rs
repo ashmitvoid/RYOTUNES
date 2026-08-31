@@ -658,9 +658,9 @@ pub fn allow_covers(app: &tauri::AppHandle, songs: &[SongItem]) {
     }
 }
 
-/// Allow the watched folders and the covers directory at startup, before the window loads. Without
-/// it, a restored queue whose current track is a local file asks for its artwork before the first
-/// scan has finished and gets a 403 it never retries.
+/// Allow only Ryotunes-owned cover storage plus individual legacy cover files at startup. The v5
+/// rescan migrates those legacy sidecars into owned storage; watched music directories themselves
+/// are never recursively exposed to the WebKit asset protocol.
 pub fn allow_music_paths(app: &tauri::AppHandle, db: &Db) {
     use tauri::Manager;
     let scope = app.asset_protocol_scope();

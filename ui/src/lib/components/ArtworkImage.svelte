@@ -52,6 +52,18 @@
 		fullFailed = true;
 		fullDecoded = false;
 	}
+
+	function handleFullLoad(event: Event) {
+		const image = event.currentTarget;
+		const url = full;
+		if (!(image instanceof HTMLImageElement) || !url) return;
+		void revealFull(image, url);
+	}
+
+	function handleFullError() {
+		const url = full;
+		if (url) failFull(url);
+	}
 </script>
 
 <div
@@ -80,8 +92,8 @@
 					loading={eager ? 'eager' : 'lazy'}
 					decoding="async"
 					draggable="false"
-					onload={(event) => void revealFull(event.currentTarget, full)}
-					onerror={() => failFull(full)}
+					onload={handleFullLoad}
+					onerror={handleFullError}
 				/>
 			{/key}
 		{/if}
