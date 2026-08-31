@@ -26,6 +26,7 @@
 		privacy,
 		cover,
 		fallback,
+		local = false,
 		onchange
 	}: {
 		open: boolean;
@@ -37,6 +38,8 @@
 		cover?: string;
 		/** YouTube's own artwork, shown when there is no custom one. */
 		fallback?: string;
+		/** Device playlist: name + local artwork only; no YouTube description/privacy write. */
+		local?: boolean;
 		onchange: (patch: Edit) => void;
 	} = $props();
 
@@ -70,9 +73,8 @@
 		if (typeof picked === 'string') await storeCover(picked);
 	}
 
-	// Picking answers as soon as the file is copied. Removing waits on YouTube, because its own
-	// thumbnail is the cover being removed: dropping the local copy first would swap the header to
-	// that same image and only reach the rebuilt collage a beat later.
+	// Picking answers as soon as the file is copied. For account playlists, removing waits on
+	// YouTube because its rebuilt thumbnail is part of the answer; device playlists stay local.
 	async function storeCover(path: string | null) {
 		if (removing) return;
 		removing = path === null;
@@ -91,19 +93,24 @@
 		const name = draftName.trim();
 		const changes: { name?: string; description?: string; public?: boolean } = {};
 		if (name && name !== title) changes.name = name;
-		if (draftDescription !== (description ?? '')) changes.description = draftDescription;
-		if (isPublic !== (privacy === 'PUBLIC')) changes.public = isPublic;
+		if (!local && draftDescription !== (description ?? '')) changes.description = draftDescription;
+		if (!local && isPublic !== (privacy === 'PUBLIC')) changes.public = isPublic;
 		if (!Object.keys(changes).length) {
 			open = false;
 			return;
 		}
 		const before: Edit = { title, description, privacy };
 		saving = true;
-		onchange({
-			title: changes.name ?? title,
-			description: changes.description ?? description,
-			privacy: changes.public === undefined ? privacy : changes.public ? 'PUBLIC' : 'PRIVATE'
-		});
+		onchange(
+			local
+				? { title: changes.name ?? title }
+				: {
+						title: changes.name ?? title,
+						description: changes.description ?? description,
+						privacy:
+							changes.public === undefined ? privacy : changes.public ? 'PUBLIC' : 'PRIVATE'
+					}
+		);
 		open = false;
 		try {
 			await api.editPlaylistDetails(id, changes);
@@ -121,7 +128,11 @@
 	<Dialog.Content class="ryo-overlay-sheet sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title>Edit playlist</Dialog.Title>
-			<Dialog.Description>Change how this playlist looks and who can see it.</Dialog.Description>
+			<Dialog.Description>
+				{local
+					? 'Change the name or artwork stored for this playlist on this device.'
+					: 'Change how this playlist looks and who can see it.'}
+			</Dialog.Description>
 		</Dialog.Header>
 		<form
 			class="flex flex-col gap-4"
@@ -167,29 +178,39 @@
 				</div>
 				<div class="flex min-w-0 flex-1 flex-col gap-3">
 					<Input bind:value={draftName} placeholder="Playlist name" aria-label="Playlist name" />
-					<textarea
-						bind:value={draftDescription}
-						placeholder="Description"
-						aria-label="Playlist description"
-						rows="4"
-						class="w-full flex-1 resize-none rounded-2xl border border-input bg-input/30 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-					></textarea>
+					{#if !local}
+						<textarea
+							bind:value={draftDescription}
+							placeholder="Description"
+							aria-label="Playlist description"
+							rows="4"
+							class="w-full flex-1 resize-none rounded-2xl border border-input bg-input/30 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+						></textarea>
+					{:else}
+						<p class="rounded-2xl border px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+							Device playlists stay available without a Google account. Their songs, name and artwork
+							are kept locally and are never uploaded automatically.
+						</p>
+					{/if}
 				</div>
 			</div>
-			<div class="flex items-center justify-between gap-4 rounded-2xl border px-3 py-2.5">
-				<div class="min-w-0">
-					<div class="text-sm font-medium">Public</div>
-					<p class="text-xs text-muted-foreground">
-						{isPublic
-							? 'Anyone can find this playlist on YouTube Music.'
-							: 'Only you can see this playlist.'}
-					</p>
+			{#if !local}
+				<div class="flex items-center justify-between gap-4 rounded-2xl border px-3 py-2.5">
+					<div class="min-w-0">
+						<div class="text-sm font-medium">Public</div>
+						<p class="text-xs text-muted-foreground">
+							{isPublic
+								? 'Anyone can find this playlist on YouTube Music.'
+								: 'Only you can see this playlist.'}
+						</p>
+					</div>
+					<Switch bind:checked={isPublic} aria-label="Public playlist" />
 				</div>
-				<Switch bind:checked={isPublic} aria-label="Public playlist" />
-			</div>
+			{/if}
 			<p class="text-xs text-muted-foreground">
-				Artwork applies here at once and uploads to YouTube Music in the background. Square JPEG or
-				PNG works best.
+				{local
+					? 'Artwork is copied into Ryotunes storage on this device. Square JPEG or PNG works best.'
+					: 'Artwork applies here at once and uploads to YouTube Music in the background. Square JPEG or PNG works best.'}
 			</p>
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Cancel</Button>
