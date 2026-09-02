@@ -67,16 +67,16 @@ edit_playlist_ui = read('ui/src/lib/components/EditPlaylistDialog.svelte')
 library_page = read('ui/src/routes/library/+page.svelte')
 playlist_page = read('ui/src/routes/playlist/[id]/+page.svelte')
 
-# --- frozen v2.4 identity ----------------------------------------------------
-req('version = "2.4.0"' in cargo, 'workspace version is not 2.4.0')
-req('name = "ryotunes"\nversion = "2.4.0"' in lock, 'Cargo.lock Ryotunes version not 2.4.0')
-req('name = "sync-server"\nversion = "2.4.0"' in lock, 'Cargo.lock sync-server version not 2.4.0')
+# --- frozen v2.4.1 identity ----------------------------------------------------
+req('version = "2.4.1"' in cargo, 'workspace version is not 2.4.1')
+req('name = "ryotunes"\nversion = "2.4.1"' in lock, 'Cargo.lock Ryotunes version not 2.4.1')
+req('name = "sync-server"\nversion = "2.4.1"' in lock, 'Cargo.lock sync-server version not 2.4.1')
 parsed = json.loads(config)
-req(parsed.get('version') == '2.4.0' and parsed.get('identifier') == 'dev.ryoku.ryotunes', 'Tauri identity incorrect')
-req(json.loads(read('ui/package.json')).get('version') == '2.4.0', 'UI version incorrect')
-req("PRODUCT_VERSION = 'v2.4'" in settings and "'2.4.0'" in settings, 'Settings version identity incorrect')
-req('pkgver=2.4.0' in read('packaging/arch/PKGBUILD'), 'Arch source pkgver incorrect')
-req('ryotunes-v2.4 2.4.0-1' in read('README.md') and 'ryotunes-v2.4 2.4.0-1' in read('RELEASE_NOTES.md'), 'public package identity missing from docs')
+req(parsed.get('version') == '2.4.1' and parsed.get('identifier') == 'dev.ryoku.ryotunes', 'Tauri identity incorrect')
+req(json.loads(read('ui/package.json')).get('version') == '2.4.1', 'UI version incorrect')
+req("PRODUCT_VERSION = 'v2.4'" in settings and "'2.4.1'" in settings, 'Settings version identity incorrect')
+req('pkgver=2.4.1' in read('packaging/arch/PKGBUILD'), 'Arch source pkgver incorrect')
+req('ryotunes-v2.4 2.4.1-1' in read('README.md') and 'ryotunes-v2.4 2.4.1-1' in read('RELEASE_NOTES.md'), 'public package identity missing from docs')
 req('name = "httpdate"' not in lock and 'name = "tauri-plugin-window-state"' not in lock, 'stale v2.0 lock entries returned')
 
 # --- audio-only / background architecture ----------------------------------
@@ -341,4 +341,4 @@ for p in (root/'ui/src').rglob('*'):
         written.update(re.findall(r"api\.setSetting\('([^']+)'", p.read_text()))
 req(written <= allowed, f'frontend writes unwhitelisted settings: {sorted(written-allowed)}')
 
-print('Release invariants v2.4: OK')
+print('Release invariants v2.4.1: OK')

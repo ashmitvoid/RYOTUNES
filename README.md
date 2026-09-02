@@ -160,16 +160,16 @@ The design rules behind the interface are documented in **[docs/DESIGN.md](docs/
 
 Ryotunes v2.4 targets **x86_64 Ryoku, CachyOS and Arch-based systems**.
 
-Package identity: **`ryotunes-v2.4 2.4.0-1`**.
+Package identity: **`ryotunes-v2.4 2.4.1-1`**.
 
 The normal user path is a **prebuilt package**. End users do not need Node, pnpm, Rust, Cargo or a local Tauri build.
 
 1. Open **[GitHub Releases](https://github.com/ashmitvoid/ryotunes/releases/latest)**.
-2. Download `ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst`.
+2. Download `ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst`.
 3. Install:
 
 ```bash
-sudo pacman -U ./ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst
 ```
 
 The active route is:

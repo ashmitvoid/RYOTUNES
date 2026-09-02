@@ -1,9 +1,9 @@
-name: Package v2.4 release candidate
+name: Package v2.4.1 release candidate
 
 on:
   push:
     branches:
-      - v2.4
+      - v2.4.1
   workflow_dispatch:
 
 concurrency:
@@ -92,27 +92,27 @@ jobs:
             mkdir -p dist
             ./scripts/build-replacement-package.sh dist
             RYOTUNES_STATIC_ONLY=1 ./scripts/make-source-release.sh \
-              dist/ryotunes-v2.4.0-final-source.tar.gz
+              dist/ryotunes-v2.4.1-final-source.tar.gz
             cd dist
-            sha256sum ryotunes-v2.4.0-final-source.tar.gz >> SHA256SUMS-v2.4.0.txt
-            sort -u SHA256SUMS-v2.4.0.txt -o SHA256SUMS-v2.4.0.txt
+            sha256sum ryotunes-v2.4.1-final-source.tar.gz >> SHA256SUMS-v2.4.1.txt
+            sort -u SHA256SUMS-v2.4.1.txt -o SHA256SUMS-v2.4.1.txt
           "
 
       - name: Inspect package ownership and checksums
         run: |
-          cat dist/SHA256SUMS-v2.4.0.txt
-          bsdtar -tf dist/ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst | grep -E 'usr/(bin|lib|share)' | head -80
-          test "$(bsdtar -tf dist/ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst | grep -c '^usr/bin/ryotunes-v2.4$')" -eq 1
-          ! bsdtar -tf dist/ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst | grep -Eq '^usr/bin/ryotunes$'
+          cat dist/SHA256SUMS-v2.4.1.txt
+          bsdtar -tf dist/ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst | grep -E 'usr/(bin|lib|share)' | head -80
+          test "$(bsdtar -tf dist/ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst | grep -c '^usr/bin/ryotunes-v2.4$')" -eq 1
+          ! bsdtar -tf dist/ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst | grep -Eq '^usr/bin/ryotunes$'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ryotunes-v2.4-release-candidate
+          name: ryotunes-v2.4.1-release-candidate
           path: |
-            dist/ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst
+            dist/ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst
             dist/Ryotunes-v2.4-Ryoku-x86_64.zip
-            dist/ryotunes-v2.4.0-linux-x86_64.tar.zst
-            dist/ryotunes-v2.4.0-final-source.tar.gz
-            dist/SHA256SUMS-v2.4.0.txt
+            dist/ryotunes-v2.4.1-linux-x86_64.tar.zst
+            dist/ryotunes-v2.4.1-final-source.tar.gz
+            dist/SHA256SUMS-v2.4.1.txt
           if-no-files-found: error
           retention-days: 7
