@@ -36,7 +36,7 @@ player = { path = "../crates/player" }
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }
 # Listen Together protocol and WebSocket transport.
 listen-protocol = { workspace = true }
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = { workspace = true }
 rand = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
