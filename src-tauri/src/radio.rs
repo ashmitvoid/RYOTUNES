@@ -170,6 +170,45 @@ async fn get_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Strin
     })
 }
 
+fn public_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    let [a, b, c, _] = ip.octets();
+    !(
+        a == 0
+            || a == 10
+            || a == 127
+            || (a == 100 && (64..=127).contains(&b))
+            || (a == 169 && b == 254)
+            || (a == 172 && (16..=31).contains(&b))
+            || (a == 192 && b == 0 && c == 0)
+            || (a == 192 && b == 0 && c == 2)
+            || (a == 192 && b == 168)
+            || (a == 198 && (18..=19).contains(&b))
+            || (a == 198 && b == 51 && c == 100)
+            || (a == 203 && b == 0 && c == 113)
+            || a >= 224
+    )
+}
+
+fn public_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(ip) => public_ipv4(ip),
+        std::net::IpAddr::V6(ip) => {
+            if let Some(mapped) = ip.to_ipv4_mapped() {
+                return public_ipv4(mapped);
+            }
+            let seg = ip.segments();
+            !ip.is_loopback()
+                && !ip.is_unspecified()
+                && (seg[0] & 0xfe00) != 0xfc00
+                && (seg[0] & 0xffc0) != 0xfe80
+                && (seg[0] & 0xff00) != 0xff00
+                && !(seg[0] == 0x2001 && seg[1] == 0x0db8)
+                // Deprecated IPv4-compatible space (::/96) is not a public radio endpoint.
+                && !(seg[..6].iter().all(|part| *part == 0))
+        }
+    }
+}
+
 fn http_url(value: &str) -> bool {
     if value.len() > 4_096 {
         return false;
@@ -181,22 +220,15 @@ fn http_url(value: &str) -> bool {
             || url.password().is_some()
             || host.eq_ignore_ascii_case("localhost")
             || host.ends_with(".localhost")
+            || host.ends_with(".local")
         {
             return false;
         }
         let ip_host = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')).unwrap_or(host);
         match ip_host.parse::<std::net::IpAddr>() {
-            Ok(std::net::IpAddr::V4(ip)) => {
-                !ip.is_loopback() && !ip.is_private() && !ip.is_link_local() && !ip.is_unspecified()
-            }
-            Ok(std::net::IpAddr::V6(ip)) => {
-                let seg = ip.segments()[0];
-                !ip.is_loopback()
-                    && !ip.is_unspecified()
-                    && (seg & 0xfe00) != 0xfc00
-                    && (seg & 0xffc0) != 0xfe80
-            }
-            Err(_) => true,
+            Ok(ip) => public_ip(ip),
+            // Radio Browser should point at an Internet hostname, not an mDNS/single-label LAN name.
+            Err(_) => host.contains('.'),
         }
     })
 }
@@ -378,7 +410,12 @@ mod tests {
         assert!(http_url("https://radio.example/live"));
         assert!(!http_url("http://127.0.0.1:8000/live"));
         assert!(!http_url("http://192.168.1.5/live"));
+        assert!(!http_url("http://169.254.169.254/latest/meta-data"));
         assert!(!http_url("http://[::1]/live"));
+        assert!(!http_url("http://[::ffff:127.0.0.1]/live"));
+        assert!(!http_url("http://[::ffff:192.168.1.5]/live"));
+        assert!(!http_url("http://speaker.local/live"));
+        assert!(!http_url("http://intranet/live"));
         assert!(!http_url("https://user:pass@example.com/live"));
         assert!(!http_url("file:///tmp/music"));
     }
