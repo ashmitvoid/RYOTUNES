@@ -648,12 +648,13 @@ fn sanitize(s: &str) -> String {
 }
 
 async fn handle_conn(stream: TcpStream, server: Arc<Server>) {
-    let config = WebSocketConfig::default()
-        .read_buffer_size(16 * 1024)
-        .write_buffer_size(16 * 1024)
-        .max_write_buffer_size(MAX_WS_MESSAGE_BYTES + 32 * 1024)
-        .max_message_size(Some(MAX_WS_MESSAGE_BYTES))
-        .max_frame_size(Some(MAX_WS_FRAME_BYTES));
+    // tungstenite 0.24 exposes these as public config fields. Builder-style setters and the
+    // configurable read buffer arrived later, so mutate the supported limits directly.
+    let mut config = WebSocketConfig::default();
+    config.write_buffer_size = 16 * 1024;
+    config.max_write_buffer_size = MAX_WS_MESSAGE_BYTES + 32 * 1024;
+    config.max_message_size = Some(MAX_WS_MESSAGE_BYTES);
+    config.max_frame_size = Some(MAX_WS_FRAME_BYTES);
     let ws = match tokio_tungstenite::accept_async_with_config(stream, Some(config)).await {
         Ok(ws) => ws,
         Err(e) => {
