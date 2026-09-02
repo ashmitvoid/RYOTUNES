@@ -21,6 +21,10 @@ origins on affected platforms).
 ## WebView / IPC design
 
 - The normal `main` and `mini` surfaces load the bundled Ryotunes frontend, not a remote web app.
+- All 93 application commands are registered with Tauri's runtime authority through an explicit
+  `AppManifest` and one `allow-ui-commands` permission granted only to the `main` and `mini`
+  surfaces. The remote Google login page and hidden cipher/PoToken JavaScript runtimes therefore
+  cannot invoke Ryotunes application commands even though they exist inside the same process.
 - The Google sign-in WebView has a separate `login` label and is not included in the main/mini
   capability files.
 - Neither bundled renderer has file-dialog permission. Playlist import/export, artwork selection
@@ -60,8 +64,8 @@ origins on affected platforms).
 
 The global Tauri CSP remains unset because the cipher and PoToken extraction stack uses isolated,
 hidden `data:` WebViews that require inline/dynamic JavaScript. Tauri injects a configured global
-CSP into those data documents as well, which breaks the extraction harness. Those hidden WebViews
-are not granted the main/mini capability set. A future move of the harness to a dedicated custom
+CSP into those data documents as well, which breaks the extraction harness. Those hidden WebViews are not granted the main/mini capability set or the application-command
+permission, so their dynamic JavaScript cannot cross into Ryotunes commands. A future move of the harness to a dedicated custom
 protocol can allow a strict per-application CSP without weakening playback.
 
 ## Local secrets and files

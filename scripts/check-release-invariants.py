@@ -292,6 +292,28 @@ req('ryo-lyrics-scroller-compact' in lyrics and 'padding-top:54px !important' in
 req('grid-template-columns:232px minmax(0,1fr)' in mini and 'gap:7px' in mini and 'width:38px' in mini, 'mini-player final spacing/redesign missing')
 req('--background: oklch(0.80 0.008 80)' in layout_css and '--card: oklch(0.83 0.009 80)' in layout_css, 'pre-theme light surfaces can still flash pure white')
 
+# --- Tauri application-command ACL ------------------------------------------
+build_rs = read('src-tauri/build.rs')
+ui_perm = read('src-tauri/permissions/ui.toml')
+default_cap = json.loads(read('src-tauri/capabilities/default.json'))
+mini_cap = json.loads(read('src-tauri/capabilities/mini.json'))
+handler_block = lib.split('.invoke_handler(tauri::generate_handler![', 1)[1].split('])', 1)[0]
+handler_commands = set(re.findall(r'commands::([A-Za-z0-9_]+)', handler_block))
+manifest_block = build_rs.split('const APP_COMMANDS:', 1)[1].split('];', 1)[0]
+manifest_commands = set(re.findall(r'"([A-Za-z0-9_]+)"', manifest_block))
+permission_block = ui_perm.split('commands.allow = [', 1)[1].split(']', 1)[0]
+permission_commands = set(re.findall(r'"([A-Za-z0-9_]+)"', permission_block))
+req(handler_commands == manifest_commands == permission_commands,
+    f'Tauri app-command ACL drift: handler={len(handler_commands)} manifest={len(manifest_commands)} permission={len(permission_commands)}')
+req(default_cap.get('windows') == ['main'] and mini_cap.get('windows') == ['mini'],
+    'main/mini capability windows are broader than their intended surfaces')
+req('allow-ui-commands' in default_cap.get('permissions', []) and 'allow-ui-commands' in mini_cap.get('permissions', []),
+    'bundled UI surfaces lost their application-command permission')
+req('*' not in default_cap.get('windows', []) and '*' not in mini_cap.get('windows', []),
+    'wildcard WebView capability would expose application commands to helper/login surfaces')
+req('AppManifest::new().commands(APP_COMMANDS)' in build_rs,
+    'application commands are not registered with Tauri runtime authority')
+
 # --- diagnostics / package integration -------------------------------------
 req("local expected='/usr/lib/ryotunes-v2.4/ryotunes'" in diag, 'diagnostics expected binary path incorrect')
 req('for p in /proc/[0-9]*' in diag and 'readlink -f "$p/exe"' in diag, 'diagnostics do not identify process through /proc/<pid>/exe')
