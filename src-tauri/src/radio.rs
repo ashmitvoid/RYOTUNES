@@ -42,13 +42,7 @@ fn remember_stations(stations: &[RadioStation]) {
 }
 
 fn cached_station(uuid: &str) -> Option<RadioStation> {
-    station_cache()
-        .lock()
-        .ok()?
-        .iter()
-        .rev()
-        .find(|station| station.station_uuid == uuid)
-        .cloned()
+    station_cache().lock().ok()?.iter().rev().find(|station| station.station_uuid == uuid).cloned()
 }
 
 fn valid_station_uuid(uuid: &str) -> bool {

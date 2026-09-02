@@ -1047,10 +1047,7 @@ pub async fn radio_stations(
 }
 
 #[tauri::command]
-pub async fn play_radio_station(
-    state: St<'_>,
-    station_uuid: String,
-) -> Result<(), String> {
+pub async fn play_radio_station(state: St<'_>, station_uuid: String) -> Result<(), String> {
     // WebKit only returns the opaque id it received. Native code resolves the actual station
     // record again, so this command can never become an arbitrary native HTTP fetch primitive.
     let station = crate::radio::station_by_uuid(&station_uuid).await?;
@@ -1497,11 +1494,7 @@ pub async fn set_playlist_cover(
     let src = chosen
         .into_path()
         .map_err(|_| "That artwork is not a local filesystem file.".to_string())?;
-    let ext = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+    let ext = src.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
     if !matches!(ext.as_str(), "jpg" | "jpeg" | "png") {
         return Err("Pick a JPEG or PNG image.".into());
     }
@@ -1660,11 +1653,7 @@ pub async fn add_local_folder(
     app: tauri::AppHandle,
     state: St<'_>,
 ) -> Result<Option<crate::local::LocalLibrary>, String> {
-    let Some(chosen) = app
-        .dialog()
-        .file()
-        .set_title("Add a music folder")
-        .blocking_pick_folder()
+    let Some(chosen) = app.dialog().file().set_title("Add a music folder").blocking_pick_folder()
     else {
         return Ok(None);
     };
@@ -1673,10 +1662,7 @@ pub async fn add_local_folder(
         .map_err(|_| "That folder is not a local filesystem path.".to_string())?;
     let path = canonical_music_folder(chosen.to_string_lossy().as_ref())?;
     crate::local::add_folder(&state.db, path);
-    crate::local::scan(&state.app, &state.db)
-        .await
-        .map(Some)
-        .map_err(|e| e.to_string())
+    crate::local::scan(&state.app, &state.db).await.map(Some).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
