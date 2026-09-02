@@ -1697,7 +1697,7 @@ pub async fn add_local_folder(
         .map_err(|_| "That folder is not a local filesystem path.".to_string())?;
     let path = canonical_music_folder(chosen.to_string_lossy().as_ref())?;
     crate::local::add_folder(&state.db, path);
-    crate::local::scan(&state.app, &state.db).await.map(Some).map_err(|e| e.to_string())
+    scan_local(&state).await.map(Some)
 }
 
 #[tauri::command]
