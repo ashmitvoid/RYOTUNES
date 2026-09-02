@@ -83,7 +83,7 @@ jobs:
           file target/release/ryotunes-sync
           sha256sum target/release/ryotunes target/release/ryotunes-sync > v2.4-binary-SHA256SUMS.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ryotunes-v2.4-linux-x86_64-binaries
           path: |

@@ -105,7 +105,7 @@ jobs:
           test "$(bsdtar -tf dist/ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst | grep -c '^usr/bin/ryotunes-v2.4$')" -eq 1
           ! bsdtar -tf dist/ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst | grep -Eq '^usr/bin/ryotunes$'
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ryotunes-v2.4.1-release-candidate
           path: |
