@@ -184,7 +184,8 @@ fn http_url(value: &str) -> bool {
         {
             return false;
         }
-        match host.parse::<std::net::IpAddr>() {
+        let ip_host = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')).unwrap_or(host);
+        match ip_host.parse::<std::net::IpAddr>() {
             Ok(std::net::IpAddr::V4(ip)) => {
                 !ip.is_loopback() && !ip.is_private() && !ip.is_link_local() && !ip.is_unspecified()
             }

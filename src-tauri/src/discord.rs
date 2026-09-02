@@ -873,7 +873,7 @@ mod tests {
         let mut p = playing("a", 10.0);
         sent_now(&mut p, 10);
         assert!(!p.wants_push());
-        p.apply(Msg::Name("Ryotunes".into()));
+        p.apply(Msg::Name("Boom. Boom. Pow.".into()));
         assert!(p.wants_push(), "changing only the vanity title must refresh Discord");
     }
 
