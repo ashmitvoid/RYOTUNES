@@ -100,6 +100,8 @@ req('normalize_lt_server_url' in commands and 'ws://' in commands and 'wss://' i
     'Listen Together server URL validation missing')
 req('canonical_music_folder' in commands and 'filesystem root' in commands,
     'local music folder path guard missing')
+req('has_local_track' in db and 'if !self.db.has_local_track(path)' in state,
+    'renderer-forged local media ids can reach native file playback')
 req('std::process::Command::new("cmd")' not in lastfm and 'explorer.exe' in lastfm and 'browser_url' in lastfm,
     'external browser URL can still pass through a command shell')
 req('const SCAN_VERSION: &str = "5"' in local_rs and 'sidecar_cover' in local_rs,

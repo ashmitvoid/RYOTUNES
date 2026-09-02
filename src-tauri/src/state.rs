@@ -715,7 +715,12 @@ impl AppState {
 
     async fn resolve(&self, video_id: &str, is_upload: bool) -> Result<PlaybackData, ResolveError> {
         // A local file is its own "stream": no network, no cache, no extraction (local.rs).
+        // The renderer sees local ids for legitimate library rows, but it is not authoritative:
+        // require the path to have come from our native scan before handing it to mpv.
         if let Some(path) = crate::local::song_path(video_id) {
+            if !self.db.has_local_track(path) {
+                return Err(ResolveError::LocalMissing(path.to_owned()));
+            }
             return crate::local::playback_data(video_id, path).map_err(|_| {
                 // Gone since the last scan. Forget it here rather than at the next scan, and say
                 // so — the UI drops the row (and any Shortcuts tile) on the spot instead of

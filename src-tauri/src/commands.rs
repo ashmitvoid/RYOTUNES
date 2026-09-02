@@ -33,7 +33,9 @@ pub(crate) fn normalize_proxy_setting(raw: &str) -> Result<String, String> {
         return Err("Proxy must use http:// or https:// and include a host.".into());
     }
     if !url.username().is_empty() || url.password().is_some() {
-        return Err("Authenticated proxy URLs are not supported in renderer-visible settings.".into());
+        return Err(
+            "Authenticated proxy URLs are not supported in renderer-visible settings.".into()
+        );
     }
     if url.fragment().is_some() || url.query().is_some() || !matches!(url.path(), "" | "/") {
         return Err("Proxy URL must contain only scheme, host and port.".into());
@@ -1197,13 +1199,7 @@ pub async fn import_playlist_file(
     if transfer.items.iter().any(|item| !portable_song(item)) {
         return Err("That playlist contains unsupported or unsafe track metadata.".into());
     }
-    transfer.title = transfer
-        .title
-        .trim()
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(150)
-        .collect();
+    transfer.title = transfer.title.trim().chars().filter(|c| !c.is_control()).take(150).collect();
     transfer.items = transfer.items.into_iter().map(shed_queue_context).collect();
     Ok(Some(serde_json::json!({"title": transfer.title, "items": transfer.items})))
 }

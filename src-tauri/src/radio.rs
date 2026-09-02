@@ -94,10 +94,7 @@ fn official_mirror_host(raw: &str) -> Option<String> {
 }
 
 async fn bounded_response_bytes(mut response: reqwest::Response) -> Result<Vec<u8>, String> {
-    if response
-        .content_length()
-        .is_some_and(|length| length > MAX_RADIO_RESPONSE_BYTES as u64)
-    {
+    if response.content_length().is_some_and(|length| length > MAX_RADIO_RESPONSE_BYTES as u64) {
         return Err("Radio Browser response was too large.".into());
     }
     let mut bytes = Vec::new();

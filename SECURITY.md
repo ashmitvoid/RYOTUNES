@@ -45,6 +45,9 @@ origins on affected platforms).
   never interpolated into a shell command.
 - The Tauri asset protocol has an empty static scope. Local cover art is copied into Ryotunes-owned
   storage; watched music directories are not recursively exposed to the renderer.
+- Local track ids contain a native path for offline playback, but Rust verifies that exact path is
+  present in the native-scanned `local_tracks` database before it can be handed to mpv. A forged
+  `LOCAL:` id from WebKit therefore cannot open an arbitrary file.
 - Account cookies, delegated YouTube identity values, visitor data, queue internals and stream URLs
   are deliberately excluded from the settings IPC API.
 - The optional Listen Together relay bounds WebSocket frame/message sizes, room count, queue length,
