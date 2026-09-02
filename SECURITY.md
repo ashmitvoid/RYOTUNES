@@ -27,6 +27,9 @@ origins on affected platforms).
   cannot invoke Ryotunes application commands even though they exist inside the same process.
 - The Google sign-in WebView has a separate `login` label and is not included in the main/mini
   capability files.
+- The bundled surfaces do not use `core:default`; they receive only the Tauri app/event APIs and
+  explicit window/WebView operations Ryotunes actually uses. In particular, renderer-side core image/path,
+  tray, menu and resource defaults are not exposed.
 - Neither bundled renderer has file-dialog permission. Playlist import/export, artwork selection
   and local-folder selection open native pickers from Rust commands, so WebKit cannot silently
   choose arbitrary filesystem paths.

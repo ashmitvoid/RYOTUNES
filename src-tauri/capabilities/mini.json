@@ -6,7 +6,8 @@
     "mini"
   ],
   "permissions": [
-    "core:default",
+    "core:app:allow-version",
+    "core:event:default",
     "core:webview:allow-set-webview-zoom",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",

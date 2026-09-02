@@ -311,6 +311,14 @@ req('allow-ui-commands' in default_cap.get('permissions', []) and 'allow-ui-comm
     'bundled UI surfaces lost their application-command permission')
 req('*' not in default_cap.get('windows', []) and '*' not in mini_cap.get('windows', []),
     'wildcard WebView capability would expose application commands to helper/login surfaces')
+for cap_name, cap in [('main', default_cap), ('mini', mini_cap)]:
+    perms = set(cap.get('permissions', []))
+    req('core:default' not in perms, f'{cap_name} capability re-enabled broad core:default')
+    req('core:app:allow-version' in perms and 'core:event:default' in perms,
+        f'{cap_name} capability lost the minimal app/event APIs used by the bundled UI')
+    for forbidden in ['core:image:default', 'core:path:default', 'core:tray:default',
+                      'core:menu:default', 'core:resources:default']:
+        req(forbidden not in perms, f'{cap_name} capability exposes unnecessary {forbidden}')
 req('AppManifest::new().commands(APP_COMMANDS)' in build_rs,
     'application commands are not registered with Tauri runtime authority')
 
