@@ -24,6 +24,7 @@ const FALLBACK_SERVERS: [&str; 3] = [
 const USER_AGENT: &str = "Ryotunes/2.4 (+https://github.com/ashmitvoid/ryotunes)";
 const STATION_CACHE_MAX: usize = 256;
 const MAX_QUERY_CHARS: usize = 128;
+const MAX_RADIO_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 static STATION_CACHE: OnceLock<Mutex<VecDeque<RadioStation>>> = OnceLock::new();
 
 fn station_cache() -> &'static Mutex<VecDeque<RadioStation>> {
@@ -87,6 +88,28 @@ struct Mirror {
     name: String,
 }
 
+fn official_mirror_host(raw: &str) -> Option<String> {
+    let host = raw.trim().trim_end_matches('.').to_ascii_lowercase();
+    (host == "api.radio-browser.info" || host.ends_with(".api.radio-browser.info")).then_some(host)
+}
+
+async fn bounded_response_bytes(mut response: reqwest::Response) -> Result<Vec<u8>, String> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_RADIO_RESPONSE_BYTES as u64)
+    {
+        return Err("Radio Browser response was too large.".into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len().saturating_add(chunk.len()) > MAX_RADIO_RESPONSE_BYTES {
+            return Err("Radio Browser response was too large.".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
 pub fn is_radio_id(id: &str) -> bool {
     id.starts_with(RADIO_ID_PREFIX)
 }
@@ -101,17 +124,17 @@ fn client() -> Result<reqwest::Client, String> {
 
 async fn mirrors(client: &reqwest::Client) -> Vec<String> {
     let mut out = match client.get(DISCOVERY_URL).send().await {
-        Ok(response) if response.status().is_success() => match response.bytes().await {
-            Ok(bytes) => serde_json::from_slice::<Vec<Mirror>>(&bytes)
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|m| {
-                    let host = m.name.trim().trim_end_matches('.');
-                    (!host.is_empty()).then(|| format!("https://{host}"))
-                })
-                .collect::<Vec<_>>(),
-            Err(_) => Vec::new(),
-        },
+        Ok(response) if response.status().is_success() => {
+            match bounded_response_bytes(response).await {
+                Ok(bytes) => serde_json::from_slice::<Vec<Mirror>>(&bytes)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|mirror| official_mirror_host(&mirror.name))
+                    .map(|host| format!("https://{host}"))
+                    .collect::<Vec<_>>(),
+                Err(_) => Vec::new(),
+            }
+        }
         _ => Vec::new(),
     };
 
@@ -130,13 +153,15 @@ async fn get_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Strin
     for base in mirrors(&client).await {
         let url = format!("{base}{path}");
         match client.get(&url).send().await {
-            Ok(response) if response.status().is_success() => match response.bytes().await {
-                Ok(bytes) => match serde_json::from_slice::<T>(&bytes) {
-                    Ok(value) => return Ok(value),
-                    Err(e) => errors.push(format!("{base}: invalid response ({e})")),
-                },
-                Err(e) => errors.push(format!("{base}: response body ({e})")),
-            },
+            Ok(response) if response.status().is_success() => {
+                match bounded_response_bytes(response).await {
+                    Ok(bytes) => match serde_json::from_slice::<T>(&bytes) {
+                        Ok(value) => return Ok(value),
+                        Err(e) => errors.push(format!("{base}: invalid response ({e})")),
+                    },
+                    Err(e) => errors.push(format!("{base}: response body ({e})")),
+                }
+            }
             Ok(response) => errors.push(format!("{base}: HTTP {}", response.status())),
             Err(e) => errors.push(format!("{base}: {e}")),
         }
@@ -179,17 +204,23 @@ fn http_url(value: &str) -> bool {
 }
 
 pub fn normalize_station(mut station: RadioStation) -> Option<RadioStation> {
+    let clean = |value: &str, max: usize| {
+        value.trim().chars().filter(|c| !c.is_control()).take(max).collect::<String>()
+    };
     station.station_uuid = station.station_uuid.trim().to_owned();
-    station.name = station.name.trim().to_owned();
+    station.name = clean(&station.name, 200);
     station.stream_url = station.stream_url.trim().to_owned();
     station.url = station.url.trim().to_owned();
     station.homepage = station.homepage.trim().to_owned();
     station.favicon = station.favicon.trim().to_owned();
-    station.country = station.country.trim().to_owned();
-    station.country_code = station.country_code.trim().to_ascii_uppercase();
-    station.tags = station.tags.trim().to_owned();
-    station.codec = station.codec.trim().to_ascii_uppercase();
+    station.country = clean(&station.country, 100);
+    station.country_code = clean(&station.country_code, 8).to_ascii_uppercase();
+    station.tags = clean(&station.tags, 512);
+    station.codec = clean(&station.codec, 32).to_ascii_uppercase();
 
+    if !valid_station_uuid(&station.station_uuid) {
+        return None;
+    }
     if !http_url(&station.stream_url) {
         station.stream_url = station.url.clone();
     }
@@ -332,6 +363,16 @@ mod tests {
             ..good
         });
         assert!(bad.is_none());
+    }
+
+    #[test]
+    fn radio_mirror_discovery_accepts_only_official_hosts() {
+        assert_eq!(
+            official_mirror_host("de1.api.radio-browser.info."),
+            Some("de1.api.radio-browser.info".into())
+        );
+        assert!(official_mirror_host("localhost").is_none());
+        assert!(official_mirror_host("radio-browser.info.evil.example").is_none());
     }
 
     #[test]

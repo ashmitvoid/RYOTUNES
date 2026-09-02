@@ -93,6 +93,9 @@ req(tauri_version is not None and tuple(map(int, tauri_version.groups())) >= (2,
     'Tauri regressed into the GHSA-7gmj-67g7-phm9 affected range')
 req('normalize_ui_setting' in commands and 'normalize_proxy_setting' in commands,
     'renderer-writable settings are not validated natively')
+req('Authenticated proxy URLs are not supported' in commands
+    and 'discarding invalid persisted proxy setting' in lib,
+    'proxy credentials can cross the WebKit settings boundary')
 req('normalize_lt_server_url' in commands and 'ws://' in commands and 'wss://' in commands,
     'Listen Together server URL validation missing')
 req('canonical_music_folder' in commands and 'filesystem root' in commands,
@@ -107,6 +110,8 @@ req(default_cap.get('windows') == ['main'] and 'dialog:allow-open' not in defaul
     'main renderer regained direct native file-dialog capability')
 req("DialogExt" in commands and "blocking_pick_folder" in commands and "blocking_save_file" in commands,
     'filesystem pickers are not owned by native commands')
+req('portable_song' in commands and 'YouTube Music tracks only' in commands,
+    'portable playlist transfer can leak local file identifiers')
 req('@tauri-apps/plugin-dialog' not in local_ui and '@tauri-apps/plugin-dialog' not in edit_playlist_ui
     and '@tauri-apps/plugin-dialog' not in library_page and '@tauri-apps/plugin-dialog' not in playlist_page,
     'renderer still owns a filesystem picker path')
@@ -134,6 +139,8 @@ req('station_by_uuid' in radio and 'STATION_CACHE_MAX' in radio and 'station_uui
     'radio playback trusts renderer-supplied stream metadata')
 req('192.168.1.5' in radio and 'localhost' in radio,
     'radio native stream URL local-network rejection missing')
+req('MAX_RADIO_RESPONSE_BYTES' in radio and 'official_mirror_host' in radio,
+    'Radio Browser response/mirror trust bounds missing')
 req('setInterval(' not in radio_ui and 'radioStations' in radio_ui and 'playRadioStation' in radio_ui,
     'Radio UI is not demand-driven')
 req('CREATE TABLE IF NOT EXISTS local_playlists' in db and 'CREATE TABLE IF NOT EXISTS local_playlist_tracks' in db,

@@ -543,7 +543,8 @@
 					<div class="border-b py-3">
 						<div class="font-medium">Proxy</div>
 						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							HTTP or HTTPS proxy for all YouTube traffic. Takes effect on restart.
+							HTTP or HTTPS proxy for all YouTube traffic. Authenticated proxy URLs are not
+							stored. Takes effect on restart.
 						</p>
 						<form
 							class="flex gap-2"

@@ -20,7 +20,7 @@ type St<'a> = State<'a, Arc<AppState>>;
 
 const MAX_CONFIG_URL: usize = 2_048;
 
-fn normalize_proxy_setting(raw: &str) -> Result<String, String> {
+pub(crate) fn normalize_proxy_setting(raw: &str) -> Result<String, String> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Ok(String::new());
@@ -32,8 +32,11 @@ fn normalize_proxy_setting(raw: &str) -> Result<String, String> {
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
         return Err("Proxy must use http:// or https:// and include a host.".into());
     }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("Authenticated proxy URLs are not supported in renderer-visible settings.".into());
+    }
     if url.fragment().is_some() || url.query().is_some() || !matches!(url.path(), "" | "/") {
-        return Err("Proxy URL must contain only scheme, credentials, host and port.".into());
+        return Err("Proxy URL must contain only scheme, host and port.".into());
     }
     Ok(url.to_string())
 }
@@ -1090,6 +1093,27 @@ fn safe_transfer_name(title: &str) -> String {
     }
 }
 
+fn portable_song(item: &SongItem) -> bool {
+    let text_ok = |value: &str, max: usize| {
+        !value.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
+    };
+    let thumbnail_ok = item.thumbnail.as_deref().is_none_or(|raw| {
+        raw.len() <= 4_096
+            && tauri::Url::parse(raw).ok().is_some_and(|url| {
+                matches!(url.scheme(), "http" | "https")
+                    && url.host_str().is_some()
+                    && url.username().is_empty()
+                    && url.password().is_none()
+            })
+    });
+    !crate::local::is_local_song(&item.video_id)
+        && !crate::radio::is_radio_id(&item.video_id)
+        && text_ok(&item.video_id, 256)
+        && text_ok(&item.title, 1_024)
+        && text_ok(&item.artists, 1_024)
+        && thumbnail_ok
+}
+
 /// Export only portable song metadata. The renderer never supplies a filesystem path: Rust opens
 /// the native save dialog and writes only after the user explicitly chooses a destination.
 #[tauri::command]
@@ -1100,6 +1124,12 @@ pub async fn export_playlist_file(
 ) -> Result<bool, String> {
     if items.len() > 5_000 {
         return Err("Export is limited to 5,000 tracks.".into());
+    }
+    if items.iter().any(|item| !portable_song(item)) {
+        return Err(
+            "Portable playlist export supports YouTube Music tracks only; local files and live radio stay on this device."
+                .into(),
+        );
     }
     let file_name = format!("{}.json", safe_transfer_name(&title));
     let Some(chosen) = app
@@ -1164,7 +1194,16 @@ pub async fn import_playlist_file(
     if transfer.version != 1 || transfer.items.len() > 5_000 {
         return Err("That playlist file version or size is not supported.".into());
     }
-    transfer.title = transfer.title.trim().chars().take(150).collect();
+    if transfer.items.iter().any(|item| !portable_song(item)) {
+        return Err("That playlist contains unsupported or unsafe track metadata.".into());
+    }
+    transfer.title = transfer
+        .title
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(150)
+        .collect();
     transfer.items = transfer.items.into_iter().map(shed_queue_context).collect();
     Ok(Some(serde_json::json!({"title": transfer.title, "items": transfer.items})))
 }
@@ -1842,6 +1881,7 @@ mod tests {
         assert!(normalize_ui_setting("ui_scale", "111").is_err());
         assert!(normalize_proxy_setting("file:///tmp/socket").is_err());
         assert!(normalize_proxy_setting("http://127.0.0.1:8080").is_ok());
+        assert!(normalize_proxy_setting("http://user:pw@proxy.example:8080").is_err());
     }
 
     #[test]

@@ -225,7 +225,17 @@ pub fn run() {
             // Session bootstrap (authentication flow startup ordering): load the persisted login session
             // (cookie/dataSyncId/visitorData) from settings; fetch visitorData anonymously
             // (PoToken flow §A) only if we've never stored one.
-            let proxy = db.get_setting("proxy");
+            let proxy = db.get_setting("proxy").and_then(|raw| {
+                match commands::normalize_proxy_setting(&raw) {
+                    Ok(value) if !value.is_empty() => Some(value),
+                    Ok(_) => None,
+                    Err(error) => {
+                        tracing::warn!(%error, "discarding invalid persisted proxy setting");
+                        db.delete_setting("proxy");
+                        None
+                    }
+                }
+            });
             let cookie = db.get_setting("session_cookie").filter(|s| !s.is_empty());
             let data_sync_id = state::persisted_data_sync_id(&db);
             let visitor_data = db.get_setting("visitor_data").filter(|s| !s.is_empty());
