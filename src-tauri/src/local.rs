@@ -28,7 +28,7 @@ const FOLDERS_SETTING: &str = "local_folders";
 /// Bumped whenever `read_track` starts producing different titles, artists or album keys. The scan
 /// normally trusts stored rows whose file hasn't changed; after a bump it re-reads everything once,
 /// so a library isn't left half-parsed by the old rules and half by the new ones.
-const SCAN_VERSION: &str = "4";
+const SCAN_VERSION: &str = "5";
 const SCAN_VERSION_SETTING: &str = "local_scan_version";
 
 /// Extensions we pick up. Playback itself is mpv, which decodes far more than this — the list is
@@ -40,6 +40,7 @@ const AUDIO_EXT: [&str; 15] = [
 /// Cover images sitting next to the tracks, in preference order (used when nothing is embedded).
 const COVER_FILES: [&str; 6] =
     ["cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "album.jpg"];
+const MAX_COVER_BYTES: u64 = 16 * 1024 * 1024;
 
 /// What an untagged file's artist reads as. Shared so the scrobbler can refuse to send it: a
 /// Last.fm profile full of "Unknown artist" is worse than a gap.
@@ -361,14 +362,34 @@ fn cover_for(
     dir: Option<&Path>,
     covers_dir: &Path,
 ) -> Option<String> {
-    embedded_cover(album_key, tag, covers_dir).or_else(|| {
-        let dir = dir?;
-        COVER_FILES
-            .iter()
-            .map(|name| dir.join(name))
-            .find(|p| p.exists())
-            .map(|p| p.to_string_lossy().to_string())
-    })
+    embedded_cover(album_key, tag, covers_dir)
+        .or_else(|| sidecar_cover(album_key, dir?, covers_dir))
+}
+
+/// Copy a small cover sitting beside the music into Ryotunes' own cover directory. The renderer
+/// should never need recursive asset-protocol access to the user's music folder just to display
+/// cover.jpg. Existing v2.4 rows are reparsed once via SCAN_VERSION=5.
+fn sidecar_cover(key: &str, dir: &Path, covers_dir: &Path) -> Option<String> {
+    let source = COVER_FILES.iter().map(|name| dir.join(name)).find(|p| p.is_file())?;
+    let meta = source.metadata().ok()?;
+    if meta.len() == 0 || meta.len() > MAX_COVER_BYTES {
+        return None;
+    }
+    let ext = source.extension().and_then(|e| e.to_str())?.to_ascii_lowercase();
+    if !matches!(ext.as_str(), "jpg" | "jpeg" | "png") {
+        return None;
+    }
+    let out = covers_dir.join(format!("{key}-sidecar.{ext}"));
+    let source_newer = match (meta.modified(), out.metadata().and_then(|m| m.modified())) {
+        (Ok(source_time), Ok(dest_time)) => source_time > dest_time,
+        (_, Err(_)) => true,
+        _ => false,
+    };
+    if source_newer {
+        std::fs::create_dir_all(covers_dir).ok()?;
+        std::fs::copy(&source, &out).ok()?;
+    }
+    out.is_file().then(|| out.to_string_lossy().to_string())
 }
 
 /// The picture inside the file, written once into `covers_dir` under `key` and reused after that.
@@ -383,6 +404,9 @@ fn embedded_cover(key: &str, tag: Option<&lofty::tag::Tag>, covers_dir: &Path) -
         }
     }
     let pic = tag.and_then(|t| t.pictures().first())?;
+    if pic.data().is_empty() || pic.data().len() as u64 > MAX_COVER_BYTES {
+        return None;
+    }
     let ext = match pic.mime_type() {
         Some(lofty::picture::MimeType::Png) => "png",
         _ => "jpg",
@@ -634,16 +658,25 @@ pub fn allow_covers(app: &tauri::AppHandle, songs: &[SongItem]) {
     }
 }
 
-/// Allow the watched folders and the covers directory at startup, before the window loads. Without
-/// it, a restored queue whose current track is a local file asks for its artwork before the first
-/// scan has finished and gets a 403 it never retries.
+/// Allow only Ryotunes-owned cover storage plus individual legacy cover files at startup. The v5
+/// rescan migrates those legacy sidecars into owned storage; watched music directories themselves
+/// are never recursively exposed to the WebKit asset protocol.
 pub fn allow_music_paths(app: &tauri::AppHandle, db: &Db) {
     use tauri::Manager;
     let scope = app.asset_protocol_scope();
-    for dir in folders(db).into_iter().chain([covers_dir(app).to_string_lossy().to_string()]) {
-        let _ = scope.allow_directory(&dir, true);
-        if let Ok(real) = Path::new(&dir).canonicalize() {
-            let _ = scope.allow_directory(real, true);
+
+    // The only recursive renderer-visible directory is owned by Ryotunes itself. Individual
+    // historical sidecar covers from v2.4 are allowed just long enough for the v5 rescan to copy
+    // them here; the watched music directories themselves are never recursively web-visible.
+    let covers = covers_dir(app);
+    let _ = scope.allow_directory(&covers, true);
+    if let Ok(real) = covers.canonicalize() {
+        let _ = scope.allow_directory(real, true);
+    }
+    for cover in db.local_tracks(None).into_iter().filter_map(|track| track.cover) {
+        let _ = scope.allow_file(&cover);
+        if let Ok(real) = Path::new(&cover).canonicalize() {
+            let _ = scope.allow_file(real);
         }
     }
 }

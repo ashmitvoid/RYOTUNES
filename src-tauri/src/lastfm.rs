@@ -368,26 +368,31 @@ pub fn status(state: &AppState) -> serde_json::Value {
     })
 }
 
-/// Open a URL in the user's default browser. No opener plugin in the app; three lines cover the
-/// three platforms.
-pub(crate) fn open_browser(url: &str) -> Result<(), String> {
+fn browser_url(raw: &str) -> Result<String, String> {
+    if raw.len() > 4_096 {
+        return Err("Link is too long to open safely.".into());
+    }
+    let url = tauri::Url::parse(raw).map_err(|_| "That is not a valid web link.")?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err("Only http:// and https:// links can be opened.".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("Links containing embedded credentials are not opened.".into());
+    }
+    Ok(url.to_string())
+}
+
+/// Open a validated URL in the user's default browser. Arguments go directly to an executable —
+/// never through a shell. In particular, Windows used to call `cmd.exe /C start`; a quote inside
+/// an IPC-supplied URL could then be re-parsed as command syntax.
+pub(crate) fn open_browser(raw: &str) -> Result<(), String> {
+    let url = browser_url(raw)?;
     #[cfg(target_os = "linux")]
-    let cmd = {
-        let mut cmd = std::process::Command::new("xdg-open");
-        cmd.arg(url);
-        cmd.spawn()
-    };
+    let cmd = std::process::Command::new("xdg-open").arg(&url).spawn();
     #[cfg(target_os = "macos")]
-    let cmd = std::process::Command::new("open").arg(url).spawn();
-    // cmd.exe re-parses its own command line, and `Command::arg` only quotes args containing
-    // spaces — so an unquoted `&` in the URL split it into a second command and the browser got
-    // `…/auth?api_key=X` with the token chopped off ("Invalid API key" once the user clicks Allow).
-    // raw_arg passes the quoted URL through verbatim.
+    let cmd = std::process::Command::new("open").arg(&url).spawn();
     #[cfg(target_os = "windows")]
-    let cmd = {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("cmd").raw_arg(format!("/C start \"\" \"{url}\"")).spawn()
-    };
+    let cmd = std::process::Command::new("explorer.exe").arg(&url).spawn();
     cmd.map(|_| ()).map_err(|e| format!("Couldn't open the browser: {e}"))
 }
 
@@ -401,6 +406,15 @@ mod tests {
 
     /// The signature is the auth-critical path: params sorted by name, `namevalue` concat, secret
     /// appended, md5 hex. Verified against a hand-computed digest (secret is empty in the unit test).
+    #[test]
+    fn browser_links_are_http_only_and_never_shell_syntax() {
+        assert!(browser_url("https://example.com/a?x=1&y=2").is_ok());
+        assert!(browser_url("http://example.com").is_ok());
+        assert!(browser_url("file:///etc/passwd").is_err());
+        assert!(browser_url("javascript:alert(1)").is_err());
+        assert!(browser_url("https://user:pass@example.com").is_err());
+    }
+
     #[test]
     fn api_sig_is_sorted_concat_md5() {
         let params = vec![

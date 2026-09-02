@@ -480,12 +480,12 @@ export const startRadio = (kind: 'song' | 'artist' | 'album' | 'playlist', id: s
 export const radioStations = (query = '', offset = 0, limit = 36) =>
 	invoke<RadioStation[]>('radio_stations', { query, offset, limit });
 export const playRadioStation = (station: RadioStation) =>
-	invoke<void>('play_radio_station', { station });
+	invoke<void>('play_radio_station', { stationUuid: station.stationUuid });
 export interface PlaylistTransfer { title: string; items: SongItem[]; }
-export const exportPlaylistFile = (path: string, title: string, items: SongItem[]) =>
-	invoke<void>('export_playlist_file', { path, title, items });
-export const importPlaylistFile = (path: string) =>
-	invoke<PlaylistTransfer>('import_playlist_file', { path });
+export const exportPlaylistFile = (title: string, items: SongItem[]) =>
+	invoke<boolean>('export_playlist_file', { title, items });
+export const importPlaylistFile = () =>
+	invoke<PlaylistTransfer | null>('import_playlist_file');
 export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
 export const getBrowseGrid = (id: string, params?: string) =>
@@ -494,7 +494,7 @@ export const getBrowseGrid = (id: string, params?: string) =>
 // --- local music (local.rs) ------------------------------------------------------------------
 /** Rescan the watched folders. Cheap when nothing changed (one stat per file). */
 export const getLocalLibrary = () => invoke<LocalLibrary>('get_local_library');
-export const addLocalFolder = (path: string) => invoke<LocalLibrary>('add_local_folder', { path });
+export const addLocalFolder = () => invoke<LocalLibrary | null>('add_local_folder');
 export const removeLocalFolder = (path: string) =>
 	invoke<LocalLibrary>('remove_local_folder', { path });
 
@@ -516,11 +516,9 @@ export const editPlaylistDetails = (
 	playlistId: string,
 	changes: { name?: string; description?: string; public?: boolean }
 ) => invoke<void>('edit_playlist_details', { playlistId, ...changes });
-/** Custom playlist artwork. `path` is a file the user picked; `null` drops it. Answers where the
- *  local copy went, and on a removal the thumbnail YouTube rebuilt from the tracks (that one is
- *  worth waiting for: YouTube's own thumbnail is the cover being removed until it lands). */
-export const setPlaylistCover = (playlistId: string, path: string | null) =>
-	invoke<{ cover?: string; thumbnail?: string }>('set_playlist_cover', { playlistId, path });
+/** Native picker/clear path for playlist artwork. WebKit never supplies a local filesystem path. */
+export const setPlaylistCover = (playlistId: string, pick: boolean) =>
+	invoke<{ cover?: string; thumbnail?: string } | null>('set_playlist_cover', { playlistId, pick });
 export const deletePlaylist = (playlistId: string) =>
 	invoke<void>('delete_playlist', { playlistId });
 export const subscribe = (channelId: string, subscribed: boolean) =>

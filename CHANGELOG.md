@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.4.1 — 2026-09-02
+
+- Isolated the remote Google login and hidden cipher/PoToken JavaScript WebViews from all Ryotunes application commands using Tauri's runtime-authority AppManifest and an explicit main/mini-only command permission.
+- Replaced broad bundled `core:default` exposure with only the app/event and explicit window/WebView permissions the UI needs.
+- Hardened native filesystem boundaries: file choices stay behind Rust pickers, watched music folders are not recursively asset-visible, forged local-track ids are rejected, and portable playlists cannot contain local/radio identifiers.
+- Hardened Internet Radio with official mirror filtering, bounded directory responses, opaque native station resolution, persisted-record revalidation and rejection of local/private/reserved/IP-mapped stream addresses.
+- Hardened renderer-controlled settings, proxies, external URLs, Google login navigation and Listen Together endpoint validation.
+- Bounded Listen Together WebSocket frames/messages, room state, queue/suggestion counts and per-client outbound queues.
+- Restored the default Discord Rich Presence title to **Ryotunes** while preserving custom local vanity text.
+- Added weekly dependency monitoring/security audits and release invariants for the new trust boundaries.
+- Preserved native libmpv playback, WebKit hibernation, MPRIS/tray lifecycle, five-minute idle exit and event-driven performance behavior.
+
 ## v2.3 — 2026-08-27
 
 - Fixed Ryoku/Hyprland cold-launch geometry by adding compositor-owned `size = { 1760, 1000 }` to the exact-title managed window rule.

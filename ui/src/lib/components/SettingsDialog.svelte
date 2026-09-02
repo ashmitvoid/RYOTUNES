@@ -37,12 +37,12 @@
 	const activeMeta = $derived(metaFor(tab));
 	const activeLabel = $derived(TABS.find((t) => t.id === tab)?.label ?? 'General');
 	const PRODUCT_VERSION = 'v2.4';
-	let buildVersion = $state('2.4.0');
+	let buildVersion = $state('2.4.1');
 	getVersion().then((v) => (buildVersion = v)).catch(() => {});
 	let settings = $state<Record<string, string>>({});
 	let clients = $state<string[]>([]);
 	let proxyInput = $state('');
-	let discordNameInput = $state('Music');
+	let discordNameInput = $state('Ryotunes');
 	let savingDiscordName = $state(false);
 	let loaded = $state(false);
 	let clearing = $state(false);
@@ -124,7 +124,7 @@
 			settings = s;
 			clients = c;
 			proxyInput = s.proxy ?? '';
-			discordNameInput = s.discord_presence_name?.trim() || 'Music';
+			discordNameInput = s.discord_presence_name?.trim() || 'Ryotunes';
 			if (s.low_resource_mode === 'true' && !appearance.lowResourceMode) setAppearance({ lowResourceMode: true });
 			if (s.low_resource_mode !== 'true' && appearance.lowResourceMode) {
 				settings.low_resource_mode = 'true';
@@ -206,7 +206,7 @@
 
 	async function saveDiscordName() {
 		if (savingDiscordName) return;
-		const value = discordNameInput.trim() || 'Music';
+		const value = discordNameInput.trim() || 'Ryotunes';
 		const length = [...value].length;
 		if (length < 2 || length > 128) {
 			toast.error('Discord presence title must be between 2 and 128 characters');
@@ -226,7 +226,7 @@
 	}
 
 	async function resetDiscordName() {
-		discordNameInput = 'Music';
+		discordNameInput = 'Ryotunes';
 		await saveDiscordName();
 	}
 
@@ -273,9 +273,15 @@
 	}
 
 	async function saveProxy() {
-		settings.proxy = proxyInput.trim();
-		await api.setSetting('proxy', settings.proxy);
-		toast.success('Proxy saved — restart to apply');
+		const value = proxyInput.trim();
+		try {
+			await api.setSetting('proxy', value);
+			settings.proxy = value;
+			proxyInput = value;
+			toast.success('Proxy saved — restart to apply');
+		} catch (e) {
+			toast.error(String(e));
+		}
 	}
 
 	async function doClearCaches() {
@@ -394,7 +400,7 @@
 							<Input
 								bind:value={discordNameInput}
 								maxlength={128}
-								placeholder="Music"
+								placeholder="Ryotunes"
 								aria-label="Discord presence title"
 							/>
 							<Button
@@ -408,14 +414,14 @@
 							<Button
 								variant="ghost"
 								size="sm"
-								disabled={savingDiscordName || discordNameInput === 'Music'}
+								disabled={savingDiscordName || discordNameInput === 'Ryotunes'}
 								onclick={resetDiscordName}
 							>
 								Reset
 							</Button>
 						</div>
 						<p class="mt-2 text-xs text-muted-foreground">
-							Preview: Listening to {discordNameInput.trim() || 'Music'}
+							Preview: Listening to {discordNameInput.trim() || 'Ryotunes'}
 						</p>
 					</div>
 					<div class="flex items-start justify-between gap-4 border-b py-3">
@@ -537,7 +543,8 @@
 					<div class="border-b py-3">
 						<div class="font-medium">Proxy</div>
 						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							HTTP/SOCKS proxy for all YouTube traffic. Takes effect on restart.
+							HTTP or HTTPS proxy for all YouTube traffic. Authenticated proxy URLs are not
+							stored. Takes effect on restart.
 						</p>
 						<form
 							class="flex gap-2"

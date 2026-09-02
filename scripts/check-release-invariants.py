@@ -55,17 +55,28 @@ db = read('src-tauri/src/db.rs')
 add_to_playlist_ui = read('ui/src/lib/components/AddToPlaylist.svelte')
 radio_ui = read('ui/src/routes/radio/+page.svelte')
 package_builder = read('scripts/build-replacement-package.sh')
+lastfm = read('src-tauri/src/lastfm.rs')
+local_rs = read('src-tauri/src/local.rs')
+default_cap = json.loads(read('src-tauri/capabilities/default.json'))
+mini_cap = json.loads(read('src-tauri/capabilities/mini.json'))
+security_workflow = read('.github/workflows/security.yml')
+sync_server = read('crates/sync-server/src/main.rs')
+session = read('src-tauri/src/session.rs')
+local_ui = read('ui/src/lib/components/LocalMusic.svelte')
+edit_playlist_ui = read('ui/src/lib/components/EditPlaylistDialog.svelte')
+library_page = read('ui/src/routes/library/+page.svelte')
+playlist_page = read('ui/src/routes/playlist/[id]/+page.svelte')
 
-# --- frozen v2.4 identity ----------------------------------------------------
-req('version = "2.4.0"' in cargo, 'workspace version is not 2.4.0')
-req('name = "ryotunes"\nversion = "2.4.0"' in lock, 'Cargo.lock Ryotunes version not 2.4.0')
-req('name = "sync-server"\nversion = "2.4.0"' in lock, 'Cargo.lock sync-server version not 2.4.0')
+# --- frozen v2.4.1 identity ----------------------------------------------------
+req('version = "2.4.1"' in cargo, 'workspace version is not 2.4.1')
+req('name = "ryotunes"\nversion = "2.4.1"' in lock, 'Cargo.lock Ryotunes version not 2.4.1')
+req('name = "sync-server"\nversion = "2.4.1"' in lock, 'Cargo.lock sync-server version not 2.4.1')
 parsed = json.loads(config)
-req(parsed.get('version') == '2.4.0' and parsed.get('identifier') == 'dev.ryoku.ryotunes', 'Tauri identity incorrect')
-req(json.loads(read('ui/package.json')).get('version') == '2.4.0', 'UI version incorrect')
-req("PRODUCT_VERSION = 'v2.4'" in settings and "'2.4.0'" in settings, 'Settings version identity incorrect')
-req('pkgver=2.4.0' in read('packaging/arch/PKGBUILD'), 'Arch source pkgver incorrect')
-req('ryotunes-v2.4 2.4.0-1' in read('README.md') and 'ryotunes-v2.4 2.4.0-1' in read('RELEASE_NOTES.md'), 'public package identity missing from docs')
+req(parsed.get('version') == '2.4.1' and parsed.get('identifier') == 'dev.ryoku.ryotunes', 'Tauri identity incorrect')
+req(json.loads(read('ui/package.json')).get('version') == '2.4.1', 'UI version incorrect')
+req("PRODUCT_VERSION = 'v2.4'" in settings and "'2.4.1'" in settings, 'Settings version identity incorrect')
+req('pkgver=2.4.1' in read('packaging/arch/PKGBUILD'), 'Arch source pkgver incorrect')
+req('ryotunes-v2.4 2.4.1-1' in read('README.md') and 'ryotunes-v2.4 2.4.1-1' in read('RELEASE_NOTES.md'), 'public package identity missing from docs')
 req('name = "httpdate"' not in lock and 'name = "tauri-plugin-window-state"' not in lock, 'stale v2.0 lock entries returned')
 
 # --- audio-only / background architecture ----------------------------------
@@ -76,11 +87,64 @@ for forbidden in ['video_stream', 'set_webkit_media_enabled', 'videoproxy', 'hid
     req(forbidden not in active, f'audio-only path regressed: {forbidden}')
 req('<video ' not in now and '<video>' not in now, 'video element returned to Now Playing')
 
+# --- native/WebKit security boundary ---------------------------------------
+tauri_version = re.search(r'name = "tauri"\nversion = "(\d+)\.(\d+)\.(\d+)"', lock)
+req(tauri_version is not None and tuple(map(int, tauri_version.groups())) >= (2, 11, 1),
+    'Tauri regressed into the GHSA-7gmj-67g7-phm9 affected range')
+req('normalize_ui_setting' in commands and 'normalize_proxy_setting' in commands,
+    'renderer-writable settings are not validated natively')
+req('Authenticated proxy URLs are not supported' in commands
+    and 'discarding invalid persisted proxy setting' in lib,
+    'proxy credentials can cross the WebKit settings boundary')
+req('normalize_lt_server_url' in commands and 'ws://' in commands and 'wss://' in commands,
+    'Listen Together server URL validation missing')
+req('canonical_music_folder' in commands and 'filesystem root' in commands,
+    'local music folder path guard missing')
+req('has_local_track' in db and 'if !self.db.has_local_track(path)' in state,
+    'renderer-forged local media ids can reach native file playback')
+req('std::process::Command::new("cmd")' not in lastfm and 'explorer.exe' in lastfm and 'browser_url' in lastfm,
+    'external browser URL can still pass through a command shell')
+req('const SCAN_VERSION: &str = "5"' in local_rs and 'sidecar_cover' in local_rs,
+    'local cover migration/copy hardening missing')
+req('for dir in folders(db)' not in local_rs and 'scope.allow_directory(&covers, true)' in local_rs,
+    'watched music folders are recursively exposed through the asset protocol')
+req(default_cap.get('windows') == ['main'] and 'dialog:allow-open' not in default_cap.get('permissions', []),
+    'main renderer regained direct native file-dialog capability')
+req("DialogExt" in commands and "blocking_pick_folder" in commands and "blocking_save_file" in commands,
+    'filesystem pickers are not owned by native commands')
+req('portable_song' in commands and 'YouTube Music tracks only' in commands,
+    'portable playlist transfer can leak local file identifiers')
+req('@tauri-apps/plugin-dialog' not in local_ui and '@tauri-apps/plugin-dialog' not in edit_playlist_ui
+    and '@tauri-apps/plugin-dialog' not in library_page and '@tauri-apps/plugin-dialog' not in playlist_page,
+    'renderer still owns a filesystem picker path')
+req('allowed_login_navigation' in session and '.on_navigation(allowed_login_navigation)' in session,
+    'Google login WebView navigation allowlist missing')
+req(mini_cap.get('windows') == ['mini'] and 'dialog:allow-open' not in mini_cap.get('permissions', []),
+    'mini player has unnecessary file-dialog capability')
+req('cargo audit' in security_workflow and 'pnpm audit' in security_workflow,
+    'scheduled dependency security audit workflow missing')
+req('accept_async_with_config' in sync_server and 'MAX_WS_MESSAGE_BYTES' in sync_server,
+    'Listen Together relay WebSocket message limits missing')
+req('MAX_QUEUE_TRACKS' in sync_server and 'MAX_SUGGESTIONS_PER_ROOM' in sync_server,
+    'Listen Together retained room-state limits missing')
+req('mpsc::channel::<ServerMessage>(OUTBOUND_QUEUE_CAPACITY)' in sync_server,
+    'Listen Together relay outbound channel is unbounded')
+req("DEFAULT_PRESENCE_NAME: &str = \"Ryotunes\"" in read('src-tauri/src/discord.rs'),
+    'Discord default presence title is not Ryotunes')
+
 # --- v2.4 Radio / device playlists / Discord title -------------------------
 req('mod radio;' in lib and 'commands::radio_stations' in lib and 'commands::play_radio_station' in lib,
     'Internet Radio command wiring missing')
 req('RADIO_ID_PREFIX' in radio and 'hidebroken=true' in radio and 'count_click' in radio,
     'bounded Radio Browser integration missing')
+req('station_by_uuid' in radio and 'STATION_CACHE_MAX' in radio and 'station_uuid: String' in commands,
+    'radio playback trusts renderer-supplied stream metadata')
+req('.and_then(crate::radio::normalize_station)' in state,
+    'restored radio cache bypasses current native URL validation')
+req('192.168.1.5' in radio and 'localhost' in radio,
+    'radio native stream URL local-network rejection missing')
+req('MAX_RADIO_RESPONSE_BYTES' in radio and 'official_mirror_host' in radio,
+    'Radio Browser response/mirror trust bounds missing')
 req('setInterval(' not in radio_ui and 'radioStations' in radio_ui and 'playRadioStation' in radio_ui,
     'Radio UI is not demand-driven')
 req('CREATE TABLE IF NOT EXISTS local_playlists' in db and 'CREATE TABLE IF NOT EXISTS local_playlist_tracks' in db,
@@ -192,7 +256,8 @@ req('showMenu?: boolean;' in trackrow and 'contextMenu?: boolean;' in trackrow, 
 
 # --- artwork + theme + smoothness ------------------------------------------
 req('const MAX_READY_ARTWORK = 36' in art_cache and 'new Map<string, true>()' in art_cache, 'bounded artwork readiness cache missing')
-req("typeof image.decode === 'function'" in art_img and 'cancelled' in art_img and 'preview' in art_img, 'decode-before-swap/stale artwork guard missing')
+req("typeof image.decode === 'function'" in art_img and 'needsSwap' in art_img and 'fullFailed' in art_img and 'class:sharp={!needsSwap || fullFailed}' in art_img, 'sharp artwork fallback/decode-before-swap guard missing')
+req('size={960}' in now and 'previewSize={160}' in now, 'Now Playing artwork resolution regressed')
 req('ArtworkImage' in now and 'ArtworkImage' in mini, 'large artwork surfaces do not share artwork pipeline')
 for token in ['--ryo-paper:#d2cabd','--ryo-paper-lift:#e2d8c9','--ryo-panel:#c4baab','--ryo-card:#dbd1c3','--ryo-sidebar-surface:#bec6b8','--ryo-player-surface:#c1c7cc','--ryo-ink:#28231e','--ryo-light-sage:#9faa94','--ryo-light-blue:#9aaabc','--ryo-light-clay:#c58f73']:
     req(token in css, f'v2.3 Light token missing: {token}')
@@ -227,6 +292,36 @@ req('ryo-lyrics-scroller-compact' in lyrics and 'padding-top:54px !important' in
 req('grid-template-columns:232px minmax(0,1fr)' in mini and 'gap:7px' in mini and 'width:38px' in mini, 'mini-player final spacing/redesign missing')
 req('--background: oklch(0.80 0.008 80)' in layout_css and '--card: oklch(0.83 0.009 80)' in layout_css, 'pre-theme light surfaces can still flash pure white')
 
+# --- Tauri application-command ACL ------------------------------------------
+build_rs = read('src-tauri/build.rs')
+ui_perm = read('src-tauri/permissions/ui.toml')
+default_cap = json.loads(read('src-tauri/capabilities/default.json'))
+mini_cap = json.loads(read('src-tauri/capabilities/mini.json'))
+handler_block = lib.split('.invoke_handler(tauri::generate_handler![', 1)[1].split('])', 1)[0]
+handler_commands = set(re.findall(r'commands::([A-Za-z0-9_]+)', handler_block))
+manifest_block = build_rs.split('const APP_COMMANDS:', 1)[1].split('];', 1)[0]
+manifest_commands = set(re.findall(r'"([A-Za-z0-9_]+)"', manifest_block))
+permission_block = ui_perm.split('commands.allow = [', 1)[1].split(']', 1)[0]
+permission_commands = set(re.findall(r'"([A-Za-z0-9_]+)"', permission_block))
+req(handler_commands == manifest_commands == permission_commands,
+    f'Tauri app-command ACL drift: handler={len(handler_commands)} manifest={len(manifest_commands)} permission={len(permission_commands)}')
+req(default_cap.get('windows') == ['main'] and mini_cap.get('windows') == ['mini'],
+    'main/mini capability windows are broader than their intended surfaces')
+req('allow-ui-commands' in default_cap.get('permissions', []) and 'allow-ui-commands' in mini_cap.get('permissions', []),
+    'bundled UI surfaces lost their application-command permission')
+req('*' not in default_cap.get('windows', []) and '*' not in mini_cap.get('windows', []),
+    'wildcard WebView capability would expose application commands to helper/login surfaces')
+for cap_name, cap in [('main', default_cap), ('mini', mini_cap)]:
+    perms = set(cap.get('permissions', []))
+    req('core:default' not in perms, f'{cap_name} capability re-enabled broad core:default')
+    req('core:app:allow-version' in perms and 'core:event:default' in perms,
+        f'{cap_name} capability lost the minimal app/event APIs used by the bundled UI')
+    for forbidden in ['core:image:default', 'core:path:default', 'core:tray:default',
+                      'core:menu:default', 'core:resources:default']:
+        req(forbidden not in perms, f'{cap_name} capability exposes unnecessary {forbidden}')
+req('AppManifest::new().commands(APP_COMMANDS)' in build_rs,
+    'application commands are not registered with Tauri runtime authority')
+
 # --- diagnostics / package integration -------------------------------------
 req("local expected='/usr/lib/ryotunes-v2.4/ryotunes'" in diag, 'diagnostics expected binary path incorrect')
 req('for p in /proc/[0-9]*' in diag and 'readlink -f "$p/exe"' in diag, 'diagnostics do not identify process through /proc/<pid>/exe')
@@ -246,4 +341,4 @@ for p in (root/'ui/src').rglob('*'):
         written.update(re.findall(r"api\.setSetting\('([^']+)'", p.read_text()))
 req(written <= allowed, f'frontend writes unwhitelisted settings: {sorted(written-allowed)}')
 
-print('Release invariants v2.4: OK')
+print('Release invariants v2.4.1: OK')

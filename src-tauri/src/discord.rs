@@ -75,7 +75,7 @@ const DURATION_GRACE: Duration = Duration::from_millis(800);
 const MIN_WAIT: Duration = Duration::from_millis(10);
 /// Discord rejects `details`/`state`/`large_text` outside 2–128 characters.
 const MAX_FIELD: usize = 128;
-pub const DEFAULT_PRESENCE_NAME: &str = "Music";
+pub const DEFAULT_PRESENCE_NAME: &str = "Ryotunes";
 
 /// Vanity text used by Discord's "Listening to …" activity label. Empty resets to the default;
 /// every non-empty value must satisfy Discord's 2–128 character field contract.
@@ -873,7 +873,7 @@ mod tests {
         let mut p = playing("a", 10.0);
         sent_now(&mut p, 10);
         assert!(!p.wants_push());
-        p.apply(Msg::Name("Ryotunes".into()));
+        p.apply(Msg::Name("Boom. Boom. Pow.".into()));
         assert!(p.wants_push(), "changing only the vanity title must refresh Discord");
     }
 

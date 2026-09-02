@@ -1,4 +1,4 @@
-name: Publish v2.4 release
+name: Publish v2.4.1 release
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    if: startsWith(github.event.head_commit.message, 'Release Ryotunes v2.4.0')
+    if: startsWith(github.event.head_commit.message, 'Release Ryotunes v2.4.1')
     runs-on: ubuntu-24.04
     container:
       image: archlinux:base-devel
@@ -49,7 +49,7 @@ jobs:
             pnpm install --frozen-lockfile
           "
 
-      - name: Validate v2.4 source
+      - name: Validate v2.4.1 source
         run: |
           runuser -u builder -- env HOME="$BUILDER_HOME" PATH="$BUILDER_HOME/.cargo/bin:/usr/bin" bash -lc "
             cd '$GITHUB_WORKSPACE'
@@ -91,33 +91,33 @@ jobs:
             rm -rf dist
             mkdir -p dist
             ./scripts/build-replacement-package.sh dist
-            RYOTUNES_STATIC_ONLY=1 ./scripts/make-source-release.sh               dist/ryotunes-v2.4.0-final-source.tar.gz
+            RYOTUNES_STATIC_ONLY=1 ./scripts/make-source-release.sh               dist/ryotunes-v2.4.1-final-source.tar.gz
             cd dist
-            sha256sum ryotunes-v2.4.0-final-source.tar.gz >> SHA256SUMS-v2.4.0.txt
-            sort -u SHA256SUMS-v2.4.0.txt -o SHA256SUMS-v2.4.0.txt
+            sha256sum ryotunes-v2.4.1-final-source.tar.gz >> SHA256SUMS-v2.4.1.txt
+            sort -u SHA256SUMS-v2.4.1.txt -o SHA256SUMS-v2.4.1.txt
           "
 
       - name: Inspect release assets
         run: |
           ls -lh dist
-          cat dist/SHA256SUMS-v2.4.0.txt
-          bsdtar -tf dist/ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst             | grep -E 'usr/(bin|lib|share)'             | head -80
+          cat dist/SHA256SUMS-v2.4.1.txt
+          bsdtar -tf dist/ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst             | grep -E 'usr/(bin|lib|share)'             | head -80
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           assets=(
-            dist/ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst
+            dist/ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst
             dist/Ryotunes-v2.4-Ryoku-x86_64.zip
-            dist/ryotunes-v2.4.0-linux-x86_64.tar.zst
-            dist/ryotunes-v2.4.0-final-source.tar.gz
-            dist/SHA256SUMS-v2.4.0.txt
+            dist/ryotunes-v2.4.1-linux-x86_64.tar.zst
+            dist/ryotunes-v2.4.1-final-source.tar.gz
+            dist/SHA256SUMS-v2.4.1.txt
           )
 
-          if gh release view v2.4.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload v2.4.0 "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit v2.4.0               --title "Ryotunes v2.4.0"               --notes-file RELEASE_NOTES.md               --latest               --repo "$GITHUB_REPOSITORY"
+          if gh release view v2.4.1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload v2.4.1 "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit v2.4.1               --title "Ryotunes v2.4.1"               --notes-file RELEASE_NOTES.md               --latest               --repo "$GITHUB_REPOSITORY"
           else
-            gh release create v2.4.0 "${assets[@]}"               --target "$GITHUB_SHA"               --title "Ryotunes v2.4.0"               --notes-file RELEASE_NOTES.md               --latest               --repo "$GITHUB_REPOSITORY"
+            gh release create v2.4.1 "${assets[@]}"               --target "$GITHUB_SHA"               --title "Ryotunes v2.4.1"               --notes-file RELEASE_NOTES.md               --latest               --repo "$GITHUB_REPOSITORY"
           fi

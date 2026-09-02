@@ -1,82 +1,102 @@
-# Ryotunes v2.4 — Radio, device playlists and Discord presence controls
+# Ryotunes v2.4.1 — Security hardening for the v2.4 release
 
-v2.4 expands Ryotunes beyond an account-only YouTube Music workflow without changing the native
-playback/lifecycle architecture that keeps it quiet on Ryoku. The release adds demand-driven
-Internet Radio, persistent playlists that work while signed out, and a configurable Discord
-"Listening to …" title.
+v2.4.1 keeps the Radio, signed-out device-playlist and custom Discord-presence features introduced
+in v2.4, while tightening the native/WebKit trust boundary and the release supply chain. The native
+libmpv playback lifecycle, background WebKit hibernation, MPRIS/tray behavior and event-driven idle
+architecture remain unchanged.
 
-## Internet Radio
+## WebView and IPC hardening
 
-- A dedicated **Radio** surface is now available from Discover in the Ryoku sidebar.
-- Station metadata comes from the community-run Radio Browser directory.
-- Opening Radio fetches a bounded first page of popular stations; searching and **Load more** are
-  explicit user actions. There is no startup Radio request and no permanent Radio polling loop.
-- Directory requests use mirror discovery plus a short fallback set, bounded timeouts and broken
-  station filtering.
-- Selecting a station hands its validated HTTP(S) stream directly to the existing native libmpv
-  playback path. The frontend never owns the stream clock.
-- Station click registration is best-effort and never blocks or fails playback.
-- A small bounded native station cache allows a persisted live-radio queue to be restored without
-  treating a synthetic station id as a YouTube video id.
-- Live Radio stays out of YouTube-only actions: ratings, YouTube radio seeds, YouTube playlist
-  writes and YouTube share links are not offered for a station.
-- Live Radio does not enter On Repeat, Last.fm scrobbles, lyrics lookup or Home artist
-  personalization.
-- Listen Together deliberately rejects Live Radio in v2.4 because another peer cannot resolve a
-  station record cached only on this machine.
+- All Ryotunes application commands are registered with Tauri's runtime authority through an
+  explicit `AppManifest`.
+- One application permission, `allow-ui-commands`, is granted only to the bundled `main` and
+  `mini` surfaces. The remote Google login page and hidden cipher/PoToken JavaScript runtimes
+  cannot invoke Ryotunes application commands.
+- The bundled surfaces no longer use broad `core:default`. They receive only the app/event APIs
+  and explicit window/WebView operations the UI actually uses; renderer-side core image/path, tray,
+  menu and resource defaults are not exposed.
+- Main and mini no longer have direct file-dialog permission. Local-folder selection, playlist
+  import/export and playlist artwork selection stay behind native Rust pickers.
+- Renderer-writable settings, media parameters, external links, proxy URLs and Listen Together
+  endpoints are validated again in native code.
+- Authenticated proxy URLs are rejected, preventing proxy credentials from crossing into the
+  renderer-visible settings object.
+- Google sign-in top-level navigation is restricted to HTTPS Google/YouTube hosts.
+- External links are opened as validated HTTP(S) arguments directly through the OS opener, never
+  through shell interpolation.
 
-## Device playlists — no Google account required
+## Local files and portable playlists
 
-- **New playlist** is now available while signed out in both Library and the expanded sidebar.
-- Signed-out playlists are persistent **device playlists** stored in Ryotunes' SQLite database.
-  Their songs, ordering metadata and names survive app restarts and Google sign-in/sign-out.
-- Device playlists remain visible and usable after signing in; signing out never clears them.
-- The Add to playlist dialog no longer dead-ends when no playlist exists:
-  - **+ New playlist** is available inside the picker.
-  - **Create + add** creates the playlist and immediately adds the pending song(s).
-- Device playlists support add, remove, rename, delete and local custom artwork.
-- Their artwork stays local; it is never uploaded automatically.
-- Device playlist ids are namespaced away from YouTube browse ids and are never used as YouTube
-  autoplay/radio seeds.
-- The existing fast saved-in-playlists membership index now includes device playlists even while
-  signed out.
+- A forged `LOCAL:` media id is rejected unless its exact path is present in Ryotunes' native
+  scanned `local_tracks` database.
+- Watched music folders are not recursively exposed through Tauri's asset protocol. Cover images are
+  copied into Ryotunes-owned storage and only approved cover files are renderer-visible.
+- Portable playlist import/export accepts YouTube Music tracks only, so local filesystem paths and
+  live-radio records cannot leak into shareable JSON.
 
-When signed in, the normal **New playlist** action still creates a YouTube Music playlist. v2.4
-does not silently convert or upload an existing device playlist.
+## Internet Radio hardening
 
-## Custom Discord "Listening to …" title
+- Radio playback accepts only an opaque station id from WebKit; the native backend resolves the
+  actual Radio Browser record.
+- Radio Browser mirror discovery accepts only official `*.api.radio-browser.info` hosts and every
+  directory response is size-bounded before parsing.
+- Radio stream URLs reject credentials, localhost, mDNS/single-label LAN names, literal private,
+  loopback, link-local, metadata-service, multicast/reserved addresses and IPv4-mapped IPv6 forms.
+- Persisted station records are re-normalized under the current URL policy before a restored queue
+  can reach libmpv.
+- Radio remains demand-driven: no startup fetch and no permanent polling loop.
 
-- Settings → General now includes **Discord presence title**.
-- The default remains **Music**.
-- A custom 2–128 character value changes the activity label Discord renders as
-  **Listening to <your text>**.
-- Changing only this title invalidates the Rich Presence dedup state and refreshes the active card
-  without restarting playback.
-- Ryotunes' Discord application/client identity remains fixed; this setting changes vanity text,
-  not which application owns the presence.
-- Existing connection backoff, disabled-mode parking, send throttling and Quit teardown remain in
-  place.
+## Listen Together relay hardening
+
+- WebSocket message and frame sizes are bounded.
+- Room count, participants, shared queue length, pending suggestions and each client's outbound
+  queue are bounded.
+- The relay still binds to localhost by default; public deployments should remain behind a TLS
+  reverse proxy and use `wss://`.
+
+## Dependency and release security
+
+- Tauri is pinned above the affected origin-confusion range; the current lockfile resolves Tauri
+  2.11.5.
+- GitHub Dependabot tracks Rust, frontend and Actions dependencies.
+- A scheduled Security audit runs RustSec and a production frontend dependency audit.
+- Release invariants pin the application-command ACL, capability scope, settings boundary,
+  radio/local-file guards, package identity and the existing lifecycle/performance invariants.
+
+## v2.4 feature set retained
+
+### Internet Radio
+- Dedicated Radio surface under Discover using the community Radio Browser directory.
+- Bounded popular/search pagination and explicit **Load more**.
+- Native libmpv stream playback and best-effort Radio Browser click registration.
+- Radio remains excluded from YouTube-only actions, lyrics, Last.fm, On Repeat and Listen Together.
+
+### Device playlists
+- **New playlist** works while signed out.
+- Device playlists persist in SQLite independently of Google sign-in.
+- **+ New playlist** / **Create + add** remove the old Add-to-playlist dead end.
+- Device playlists support add/remove/reorder/rename/delete and local custom artwork.
+
+### Discord Rich Presence
+- The default activity title is **Ryotunes**.
+- Users can set a local 2–128 character vanity title in Settings.
+- Ryotunes' fixed Discord application/client identity does not change.
 
 ## Performance and lifecycle preserved
 
 - Audio playback remains native through libmpv.
 - Main WebKit hibernation during background playback remains intact.
 - MPRIS, hardware media keys, Ryoku shell controls and tray playback remain native.
-- No permanent high-frequency frontend timer was added for Radio, playlists or Discord title
-  updates.
 - Five-minute tray-only idle exit remains unchanged when nothing is playing.
 - Explicit Quit still tears down playback, MPRIS and integrations immediately.
+- No permanent high-frequency frontend timer was added.
 - Home retains its stable non-virtualized section architecture and bounded artwork pipeline.
-- Live Ryoku theme updates remain event-driven rather than polled.
+- Live Ryoku theme updates remain event-driven.
 
 ## Packaging
 
-The v2.4 replacement package identity is **`ryotunes-v2.4 2.4.0-1`**.
+The v2.4 replacement package identity is **`ryotunes-v2.4 2.4.1-1`**.
 
 It keeps `ryoku-desktop` installed, preserves the genuine stock Ryotunes entry points for rollback,
 installs the custom binary under `/usr/lib/ryotunes-v2.4/ryotunes`, exposes one normal
 `/usr/bin/ryotunes` route and desktop launcher, and installs the managed Ryoku window rule.
-
-The v2.4 installer recognizes v2.3 as a previous custom package rather than stock, removes the old
-custom package after installing v2.4, then reasserts the v2.4 replacement route so the previous
-uninstall hook cannot leave the stock launcher active.

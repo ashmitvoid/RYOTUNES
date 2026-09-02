@@ -1,11 +1,11 @@
-# Ryotunes v2.4 release checklist
+# Ryotunes v2.4.1 release checklist
 
 ## Build/package gates
 1. Verify frozen source checksum and extract into a disposable clean tree.
 2. Install exact frontend dependencies with the frozen lockfile and run `pnpm check`.
 3. Run `cargo fmt --all -- --check`, workspace tests, locked/offline Linux graph verification, native Tauri release build and sync-server release build.
 4. Use an isolated final `CARGO_TARGET_DIR`; never package a pre-existing release binary.
-5. `makepkg` produces `ryotunes-v2.4-2.4.0-1-x86_64.pkg.tar.zst`; package content/ownership checks pass.
+5. `makepkg` produces `ryotunes-v2.4-2.4.1-1-x86_64.pkg.tar.zst`; package content/ownership checks pass.
 6. `/usr/bin/ryotunes` resolves to `/usr/lib/ryotunes-v2.4/ryotunes`; exactly one normal Ryotunes desktop launcher is visible.
 7. `ryoku-desktop` remains installed. Removing `ryotunes-v2.4` restores the backed-up real stock Ryoku entry points.
 

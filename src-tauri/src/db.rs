@@ -788,6 +788,16 @@ impl Db {
         let _ = tx.commit();
     }
 
+    /// A local-media id is allowed to become a native file path only when that exact path was
+    /// discovered by the user's library scan and still exists in the local_tracks table.
+    pub fn has_local_track(&self, path: &str) -> bool {
+        let conn = self.0.lock().unwrap();
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM local_tracks WHERE path = ?1)", [path], |row| {
+            row.get::<_, bool>(0)
+        })
+        .unwrap_or(false)
+    }
+
     /// All tracks, or one album's, in album order. Note: loads the whole table — a personal
     /// collection is thousands of rows, so paging it would buy nothing.
     pub fn local_tracks(&self, album_key: Option<&str>) -> Vec<LocalTrack> {

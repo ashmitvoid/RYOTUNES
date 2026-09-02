@@ -93,8 +93,8 @@
                         {#if playback.now?.thumbnail}
                             <ArtworkImage
                                 source={playback.now.thumbnail}
-                                size={640}
-                                previewSize={120}
+                                size={960}
+                                previewSize={160}
                                 className="npstable-media-object ryo-now-art-swap"
                             />
                         {:else}

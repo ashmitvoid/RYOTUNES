@@ -8,6 +8,7 @@ use innertube::{
     Rating, SearchCardPage, SearchResult, SearchResults, SongItem,
 };
 use tauri::{Emitter, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::state::{
     is_local_playlist_id, is_smart_playlist_id, AppState, LOCAL_PLAYLIST_PREFIX, ON_REPEAT_ID,
@@ -16,6 +17,110 @@ use crate::state::{
 };
 
 type St<'a> = State<'a, Arc<AppState>>;
+
+const MAX_CONFIG_URL: usize = 2_048;
+
+pub(crate) fn normalize_proxy_setting(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(String::new());
+    }
+    if raw.len() > MAX_CONFIG_URL {
+        return Err("Proxy URL is too long.".into());
+    }
+    let url = tauri::Url::parse(raw).map_err(|_| "Enter a valid HTTP or HTTPS proxy URL.")?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err("Proxy must use http:// or https:// and include a host.".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(
+            "Authenticated proxy URLs are not supported in renderer-visible settings.".into()
+        );
+    }
+    if url.fragment().is_some() || url.query().is_some() || !matches!(url.path(), "" | "/") {
+        return Err("Proxy URL must contain only scheme, host and port.".into());
+    }
+    Ok(url.to_string())
+}
+
+fn known_stream_client(name: &str) -> bool {
+    name == innertube::MAIN_CLIENT
+        || innertube::STREAM_FALLBACK_ORDER.contains(&name)
+        || innertube::UPLOAD_FALLBACK_ORDER.contains(&name)
+}
+
+fn normalize_ui_setting(key: &str, raw: &str) -> Result<String, String> {
+    match key {
+        "volume" => {
+            let value: i64 = raw.parse().map_err(|_| "Volume must be a number from 0 to 100.")?;
+            (0..=100)
+                .contains(&value)
+                .then(|| value.to_string())
+                .ok_or_else(|| "Volume must be between 0 and 100.".into())
+        }
+        "proxy" => normalize_proxy_setting(raw),
+        "quality" => matches!(raw, "LOW" | "AUTO" | "HIGH")
+            .then(|| raw.to_owned())
+            .ok_or_else(|| "Unknown audio quality.".into()),
+        "enable_history" | "discord_rpc" | "close_to_tray" | "autostart" | "autoplay"
+        | "prevent_duplicates" | "lyrics_boidu" | "low_resource_mode" => {
+            matches!(raw, "true" | "false")
+                .then(|| raw.to_owned())
+                .ok_or_else(|| format!("{key} must be true or false."))
+        }
+        "disabled_stream_clients" => {
+            let mut names: Vec<&str> =
+                raw.split(',').map(str::trim).filter(|name| !name.is_empty()).collect();
+            if names.iter().any(|name| !known_stream_client(name)) {
+                return Err("Unknown stream client in disabled-client list.".into());
+            }
+            names.sort_unstable();
+            names.dedup();
+            Ok(names.join(","))
+        }
+        "ui_scale" => {
+            let value: i32 = raw.parse().map_err(|_| "Interface scale must be a percentage.")?;
+            ((80..=140).contains(&value) && value % 10 == 0)
+                .then(|| value.to_string())
+                .ok_or_else(|| "Interface scale must be 80–140% in 10% steps.".into())
+        }
+        // Discord has its own Unicode-aware 2–128 character validator below.
+        "discord_presence_name" => Ok(raw.to_owned()),
+        _ => Err(format!("unknown setting: {key}")),
+    }
+}
+
+fn normalize_lt_server_url(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw.len() > MAX_CONFIG_URL {
+        return Err("Listen Together server URL is too long.".into());
+    }
+    let url = tauri::Url::parse(raw).map_err(|_| "Enter a valid ws:// or wss:// server URL.")?;
+    if !matches!(url.scheme(), "ws" | "wss") || url.host_str().is_none() {
+        return Err("Listen Together server must use ws:// or wss:// and include a host.".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+        return Err("Listen Together server URLs cannot contain credentials or fragments.".into());
+    }
+    Ok(url.to_string())
+}
+
+fn canonical_music_folder(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err("Choose a music folder.".into());
+    }
+    let path = std::path::Path::new(raw)
+        .canonicalize()
+        .map_err(|_| "That music folder no longer exists or cannot be accessed.")?;
+    if !path.is_dir() {
+        return Err("Choose a directory, not a file.".into());
+    }
+    if path.parent().is_none() {
+        return Err("For safety, choose a music folder instead of the filesystem root.".into());
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
 
 #[tauri::command]
 pub async fn search(state: St<'_>, query: String) -> Result<Vec<SongItem>, String> {
@@ -209,12 +314,18 @@ pub async fn toggle_pause(state: St<'_>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn seek(state: St<'_>, position: f64) -> Result<(), String> {
+    if !position.is_finite() || position < 0.0 {
+        return Err("Seek position must be a non-negative finite number.".into());
+    }
     // Routed through AppState so a Listen Together host broadcasts the seek and a guest is blocked.
     state.user_seek(position).await
 }
 
 #[tauri::command]
 pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
+    if !(0..=100).contains(&volume) {
+        return Err("Volume must be between 0 and 100.".into());
+    }
     state.player.set_volume(volume).map_err(|e| e.to_string())?;
     // There is one volume and there can be two windows (the mini player). Without this the one
     // that didn't move the slider keeps showing the old level and lies about what you're hearing.
@@ -226,6 +337,12 @@ pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
 /// both reset to 1.0 / 0 on restart, so nobody wonders next week why everything sounds wrong.
 #[tauri::command]
 pub async fn set_playback_params(state: St<'_>, speed: f64, semitones: i32) -> Result<(), String> {
+    if !speed.is_finite() || !(0.25..=2.0).contains(&speed) {
+        return Err("Tempo must be between 0.25× and 2.00×.".into());
+    }
+    if !(-12..=12).contains(&semitones) {
+        return Err("Pitch must be between -12 and +12 semitones.".into());
+    }
     // Pitch first: it's the one that can fail (no librubberband), and it rolls itself back, so a
     // failure leaves nothing applied and the UI can revert both steppers together.
     state.player.set_pitch(semitones).map_err(|e| e.to_string())?;
@@ -304,6 +421,7 @@ pub async fn set_setting(
     if !UI_SETTINGS.contains(&key.as_str()) {
         return Err(format!("unknown setting: {key}"));
     }
+    let value = normalize_ui_setting(&key, &value)?;
     // Autostart is transactional: update the real OS registration first, verify it, and persist
     // only the resulting truth. This prevents the Settings switch drifting away from Linux.
     if key == "autostart" {
@@ -934,10 +1052,10 @@ pub async fn radio_stations(
 }
 
 #[tauri::command]
-pub async fn play_radio_station(
-    state: St<'_>,
-    station: crate::radio::RadioStation,
-) -> Result<(), String> {
+pub async fn play_radio_station(state: St<'_>, station_uuid: String) -> Result<(), String> {
+    // WebKit only returns the opaque id it received. Native code resolves the actual station
+    // record again, so this command can never become an arbitrary native HTTP fetch primitive.
+    let station = crate::radio::station_by_uuid(&station_uuid).await?;
     state.inner().clone().play_radio_station(station).await
 }
 
@@ -951,28 +1069,86 @@ struct PlaylistTransfer {
     items: Vec<SongItem>,
 }
 
-fn transfer_path(path: &str) -> Result<std::path::PathBuf, String> {
-    let p = std::path::PathBuf::from(path);
-    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default();
-    if ext != "json" {
-        return Err("Ryotunes playlist files must end in .json".into());
+fn transfer_path(mut path: std::path::PathBuf) -> Result<std::path::PathBuf, String> {
+    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()) {
+        None => {
+            path.set_extension("json");
+            Ok(path)
+        }
+        Some(ext) if ext == "json" => Ok(path),
+        _ => Err("Ryotunes playlist files must end in .json".into()),
     }
-    Ok(p)
 }
 
-/// Export only portable song metadata. Queue/session fields are stripped and no account cookie or
-/// stream URL ever enters the file. The write is temp + rename so an interrupted export is not a
-/// half-valid playlist.
+fn safe_transfer_name(title: &str) -> String {
+    let cleaned: String = title
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .map(|c| if r#"\/:*?"<>|"#.contains(c) { '-' } else { c })
+        .take(80)
+        .collect();
+    if cleaned.trim_matches([' ', '.', '-']).is_empty() {
+        "Ryotunes Playlist".into()
+    } else {
+        cleaned
+    }
+}
+
+fn portable_song(item: &SongItem) -> bool {
+    let text_ok = |value: &str, max: usize| {
+        !value.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
+    };
+    let thumbnail_ok = item.thumbnail.as_deref().is_none_or(|raw| {
+        raw.len() <= 4_096
+            && tauri::Url::parse(raw).ok().is_some_and(|url| {
+                matches!(url.scheme(), "http" | "https")
+                    && url.host_str().is_some()
+                    && url.username().is_empty()
+                    && url.password().is_none()
+            })
+    });
+    !crate::local::is_local_song(&item.video_id)
+        && !crate::radio::is_radio_id(&item.video_id)
+        && text_ok(&item.video_id, 256)
+        && text_ok(&item.title, 1_024)
+        && text_ok(&item.artists, 1_024)
+        && thumbnail_ok
+}
+
+/// Export only portable song metadata. The renderer never supplies a filesystem path: Rust opens
+/// the native save dialog and writes only after the user explicitly chooses a destination.
 #[tauri::command]
-pub fn export_playlist_file(
-    path: String,
+pub async fn export_playlist_file(
+    app: tauri::AppHandle,
     title: String,
     items: Vec<SongItem>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     if items.len() > 5_000 {
         return Err("Export is limited to 5,000 tracks.".into());
     }
-    let path = transfer_path(&path)?;
+    if items.iter().any(|item| !portable_song(item)) {
+        return Err(
+            "Portable playlist export supports YouTube Music tracks only; local files and live radio stay on this device."
+                .into(),
+        );
+    }
+    let file_name = format!("{}.json", safe_transfer_name(&title));
+    let Some(chosen) = app
+        .dialog()
+        .file()
+        .set_title("Export Ryotunes playlist")
+        .set_file_name(file_name)
+        .add_filter("Ryotunes playlist", &["json"])
+        .blocking_save_file()
+    else {
+        return Ok(false);
+    };
+    let path = transfer_path(
+        chosen
+            .into_path()
+            .map_err(|_| "That save location is not a local filesystem path.".to_string())?,
+    )?;
     let transfer = PlaylistTransfer {
         version: 1,
         title: title.trim().chars().take(150).collect(),
@@ -983,19 +1159,33 @@ pub fn export_playlist_file(
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path)
         .or_else(|_| {
-            // Some filesystems do not replace an existing destination atomically. The native save
-            // dialog already asked the user about overwrite; fall back to the final path there.
             let bytes = serde_json::to_vec_pretty(&transfer).map_err(std::io::Error::other)?;
             std::fs::write(&path, bytes)
         })
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
-/// Import is deliberately a narrow parser rather than a generic file read command: renderer code
-/// can only receive a validated Ryotunes playlist shape, never arbitrary file contents.
+/// Import is a narrow parser, and the path comes only from a native picker. Renderer code can ask
+/// to open the picker, but cannot silently point Rust at an arbitrary local JSON file.
 #[tauri::command]
-pub fn import_playlist_file(path: String) -> Result<serde_json::Value, String> {
-    let path = transfer_path(&path)?;
+pub async fn import_playlist_file(
+    app: tauri::AppHandle,
+) -> Result<Option<serde_json::Value>, String> {
+    let Some(chosen) = app
+        .dialog()
+        .file()
+        .set_title("Import Ryotunes playlist")
+        .add_filter("Ryotunes playlist", &["json"])
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let path = transfer_path(
+        chosen
+            .into_path()
+            .map_err(|_| "That playlist is not a local filesystem file.".to_string())?,
+    )?;
     let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
     if meta.len() > 12 * 1024 * 1024 {
         return Err("That playlist file is too large.".into());
@@ -1006,8 +1196,12 @@ pub fn import_playlist_file(path: String) -> Result<serde_json::Value, String> {
     if transfer.version != 1 || transfer.items.len() > 5_000 {
         return Err("That playlist file version or size is not supported.".into());
     }
+    if transfer.items.iter().any(|item| !portable_song(item)) {
+        return Err("That playlist contains unsupported or unsafe track metadata.".into());
+    }
+    transfer.title = transfer.title.trim().chars().filter(|c| !c.is_control()).take(150).collect();
     transfer.items = transfer.items.into_iter().map(shed_queue_context).collect();
-    Ok(serde_json::json!({"title": transfer.title, "items": transfer.items}))
+    Ok(Some(serde_json::json!({"title": transfer.title, "items": transfer.items})))
 }
 
 // --- write actions (write API ✎, authentication flow) ----------------------------------------------
@@ -1286,19 +1480,18 @@ pub async fn set_playlist_cover(
     app: tauri::AppHandle,
     state: St<'_>,
     playlist_id: String,
-    path: Option<String>,
-) -> Result<CoverResult, String> {
+    pick: bool,
+) -> Result<Option<CoverResult>, String> {
+    use std::io::Read;
     use tauri::Manager;
-    // What YouTube's uploader will take. WebP is not on the list: it answers 415 for one, and a
-    // cover that only works on this machine is worse than one the picker never offered.
-    const IMAGE_EXTS: [&str; 3] = ["jpg", "jpeg", "png"];
+
+    const MAX_BYTES: u64 = 8 * 1024 * 1024;
+    const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
     let key = cover_key(&playlist_id);
     let stored = state.db.get_setting(&key);
-    let Some(src) = path else {
-        // YouTube first, so the local copy is still on screen while it answers. Its refusal is
-        // never fatal though: dropping the cover from this machine is what the user clicked, and
-        // an account that was not allowed to set one up there has nothing to clear anyway.
+
+    if !pick {
         let thumbnail = match clear_cover_on_youtube(&state, &playlist_id).await {
             Ok(t) => {
                 state.db.delete_setting(&synced_key(&playlist_id));
@@ -1306,8 +1499,6 @@ pub async fn set_playlist_cover(
             }
             Err(e) => {
                 tracing::warn!(playlist_id, error = %e, "custom cover not cleared on YouTube Music");
-                // Only worth saying when a cover of ours actually reached the account: otherwise
-                // there was nothing up there to keep, and the warning would be a lie.
                 if state.db.get_setting(&synced_key(&playlist_id)).is_some() {
                     let _ = state.app.emit(
                         "cover-error",
@@ -1323,45 +1514,56 @@ pub async fn set_playlist_cover(
         if let Some(old) = stored {
             let _ = std::fs::remove_file(old);
         }
-        return Ok(CoverResult { cover: None, thumbnail });
+        return Ok(Some(CoverResult { cover: None, thumbnail }));
+    }
+
+    let Some(chosen) = app
+        .dialog()
+        .file()
+        .set_title("Choose playlist artwork")
+        .add_filter("Images", &["jpg", "jpeg", "png"])
+        .blocking_pick_file()
+    else {
+        return Ok(None);
     };
-    let src = std::path::Path::new(&src);
+    let src = chosen
+        .into_path()
+        .map_err(|_| "That artwork is not a local filesystem file.".to_string())?;
     let ext = src.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
-    if !IMAGE_EXTS.contains(&ext.as_str()) {
-        return Err("Pick a JPEG or PNG image: YouTube Music won't take anything else.".into());
+    if !matches!(ext.as_str(), "jpg" | "jpeg" | "png") {
+        return Err("Pick a JPEG or PNG image.".into());
     }
-    // Note: a flat size cap instead of downscaling. It keeps a 40px sidebar thumb from
-    // decoding a camera raw in the webview and the upload from swallowing one; reach for the
-    // `image` crate and a real resize only if 8 MB turns out to bother anyone.
-    const MAX_BYTES: u64 = 8 * 1024 * 1024;
-    if src.metadata().map(|m| m.len()).unwrap_or(0) > MAX_BYTES {
-        return Err("That image is over 8 MB. Pick a smaller one.".into());
+    let meta = src.metadata().map_err(|_| "That image cannot be read.".to_string())?;
+    if !meta.is_file() || meta.len() == 0 || meta.len() > MAX_BYTES {
+        return Err("Artwork must be a readable JPEG/PNG up to 8 MB.".into());
     }
+
+    let mut head = [0u8; 8];
+    let mut file = std::fs::File::open(&src).map_err(|e| e.to_string())?;
+    let read = file.read(&mut head).map_err(|e| e.to_string())?;
+    let is_png = read >= PNG_MAGIC.len() && &head[..PNG_MAGIC.len()] == PNG_MAGIC;
+    let is_jpeg = read >= 3 && head[..3] == [0xFF, 0xD8, 0xFF];
+    if !is_png && !is_jpeg {
+        return Err("That file is not a valid JPEG or PNG image.".into());
+    }
+
     let dir = crate::local::covers_dir(&app).join("playlists");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    // Timestamped, so replacing a cover can't be served out of the webview's cache under the name
-    // it already has. The id is filtered to filename characters rather than trusted: it arrives
-    // from the UI, and a `..` in it would write outside this directory.
     let stem: String = playlist_id
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
         .collect();
+    let stem = if stem.is_empty() { "playlist" } else { stem.as_str() };
     let dest = dir.join(format!("{stem}-{}.{ext}", crate::db::now_secs()));
-    std::fs::copy(src, &dest).map_err(|e| e.to_string())?;
-    // Only now is the cover it replaces safe to unlink. Dropping it any earlier means a picked
-    // file this command goes on to refuse (wrong format, too big, unreadable) takes the artwork
-    // already on screen down with it, and the toast talks about the new file while the old one is
-    // the thing that just disappeared.
+    std::fs::copy(&src, &dest).map_err(|e| e.to_string())?;
     if let Some(old) = stored {
         let _ = std::fs::remove_file(old);
     }
     let dest = dest.to_string_lossy().to_string();
-    // The covers directory is allowed recursively at startup, but the first cover on a fresh
-    // install is written after that ran, so name this file explicitly too.
     let _ = app.asset_protocol_scope().allow_file(&dest);
     state.db.set_setting(&key, &dest);
     sync_cover(&state, &playlist_id, dest.clone());
-    Ok(CoverResult { cover: Some(dest), thumbnail: None })
+    Ok(Some(CoverResult { cover: Some(dest), thumbnail: None }))
 }
 
 /// What the UI needs to draw after a cover changed: where the local copy is, and (on a removal)
@@ -1483,15 +1685,21 @@ pub async fn get_local_library(state: St<'_>) -> Result<crate::local::LocalLibra
 
 #[tauri::command]
 pub async fn add_local_folder(
+    app: tauri::AppHandle,
     state: St<'_>,
-    path: String,
-) -> Result<crate::local::LocalLibrary, String> {
+) -> Result<Option<crate::local::LocalLibrary>, String> {
+    let Some(chosen) = app.dialog().file().set_title("Add a music folder").blocking_pick_folder()
+    else {
+        return Ok(None);
+    };
+    let chosen = chosen
+        .into_path()
+        .map_err(|_| "That folder is not a local filesystem path.".to_string())?;
+    let path = canonical_music_folder(chosen.to_string_lossy().as_ref())?;
     crate::local::add_folder(&state.db, path);
-    scan_local(&state).await
+    scan_local(&state).await.map(Some)
 }
 
-/// Stop watching a folder. Its tracks disappear from the library on the rescan that follows (they
-/// come back untouched if the folder is added again — nothing on disk is modified).
 #[tauri::command]
 pub async fn remove_local_folder(
     state: St<'_>,
@@ -1525,7 +1733,7 @@ pub async fn lt_get_state(state: St<'_>) -> Result<serde_json::Value, String> {
 /// Set and persist the Listen Together WebSocket server URL.
 #[tauri::command]
 pub async fn lt_set_server_url(state: St<'_>, url: String) -> Result<(), String> {
-    let url = url.trim().to_string();
+    let url = normalize_lt_server_url(&url)?;
     state.db.set_setting("lt_server_url", &url);
     state.lt.set_server_url(url).await;
     Ok(())
@@ -1631,9 +1839,6 @@ pub async fn get_lyrics(
 /// the app itself off the SPA, with no way back.
 #[tauri::command]
 pub async fn open_external(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") && !url.starts_with("http://") {
-        return Err("only http(s) links".into());
-    }
     crate::lastfm::open_browser(&url)
 }
 
@@ -1661,6 +1866,36 @@ pub async fn lastfm_status(state: St<'_>) -> Result<serde_json::Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renderer_settings_are_validated_at_the_native_boundary() {
+        assert_eq!(normalize_ui_setting("quality", "HIGH").unwrap(), "HIGH");
+        assert!(normalize_ui_setting("quality", "DROP TABLE").is_err());
+        assert_eq!(normalize_ui_setting("volume", "75").unwrap(), "75");
+        assert!(normalize_ui_setting("volume", "101").is_err());
+        assert_eq!(normalize_ui_setting("ui_scale", "110").unwrap(), "110");
+        assert!(normalize_ui_setting("ui_scale", "111").is_err());
+        assert!(normalize_proxy_setting("file:///tmp/socket").is_err());
+        assert!(normalize_proxy_setting("http://127.0.0.1:8080").is_ok());
+        assert!(normalize_proxy_setting("http://user:pw@proxy.example:8080").is_err());
+    }
+
+    #[test]
+    fn listen_together_accepts_only_websocket_urls() {
+        assert!(normalize_lt_server_url("wss://example.com/room").is_ok());
+        assert!(normalize_lt_server_url("ws://127.0.0.1:4000").is_ok());
+        assert!(normalize_lt_server_url("https://example.com").is_err());
+        assert!(normalize_lt_server_url("javascript:alert(1)").is_err());
+        assert!(normalize_lt_server_url("wss://user:pass@example.com").is_err());
+    }
+
+    #[test]
+    fn local_music_picker_cannot_register_the_filesystem_root() {
+        let temp = std::env::temp_dir();
+        assert!(canonical_music_folder(temp.to_string_lossy().as_ref()).is_ok());
+        #[cfg(unix)]
+        assert!(canonical_music_folder("/").is_err());
+    }
 
     #[test]
     fn on_repeat_rows_shed_the_queue_slot_they_were_played_from() {
