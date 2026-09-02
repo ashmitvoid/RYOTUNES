@@ -29,6 +29,17 @@ const LOGIN_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWeb
 const LOGIN_URL: &str =
     "https://accounts.google.com/ServiceLogin?service=youtube&continue=https://music.youtube.com/";
 
+fn allowed_login_navigation(url: &tauri::Url) -> bool {
+    if url.scheme() != "https" {
+        return false;
+    }
+    let Some(host) = url.host_str() else { return false };
+    host == "google.com"
+        || host.ends_with(".google.com")
+        || host == "youtube.com"
+        || host.ends_with(".youtube.com")
+}
+
 /// Open the login webview. Returns immediately; sign-in completes asynchronously (the UI learns via
 /// the `auth-changed` event, or `login-error` on failure).
 pub fn open_login(app: AppHandle, state: Arc<AppState>) {
@@ -80,6 +91,7 @@ pub fn open_login(app: AppHandle, state: Arc<AppState>) {
             .title("Sign in to YouTube Music")
             .inner_size(480.0, 720.0)
             .user_agent(LOGIN_UA)
+            .on_navigation(allowed_login_navigation)
             .on_page_load(move |_w, payload| {
                 if matches!(payload.event(), PageLoadEvent::Finished)
                     && payload.url().host_str() == Some("music.youtube.com")
@@ -150,6 +162,22 @@ mod tests {
 
     fn cookie(s: &str) -> Cookie<'static> {
         Cookie::parse(s.to_string()).unwrap()
+    }
+
+    #[test]
+    fn login_navigation_stays_on_google_and_youtube_https() {
+        assert!(allowed_login_navigation(
+            &tauri::Url::parse("https://accounts.google.com/ServiceLogin").unwrap()
+        ));
+        assert!(allowed_login_navigation(
+            &tauri::Url::parse("https://music.youtube.com/").unwrap()
+        ));
+        assert!(!allowed_login_navigation(
+            &tauri::Url::parse("http://accounts.google.com/").unwrap()
+        ));
+        assert!(!allowed_login_navigation(
+            &tauri::Url::parse("https://example.com/phish").unwrap()
+        ));
     }
 
     #[test]

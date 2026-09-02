@@ -4,7 +4,8 @@
 //! task, no startup fetch, and no renderer-side CORS dependency. Playback itself remains native:
 //! the selected station's resolved HTTP(S) stream is handed straight to libmpv.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use innertube::SongItem;
@@ -21,6 +22,40 @@ const FALLBACK_SERVERS: [&str; 3] = [
     "https://at1.api.radio-browser.info",
 ];
 const USER_AGENT: &str = "Ryotunes/2.4 (+https://github.com/ashmitvoid/ryotunes)";
+const STATION_CACHE_MAX: usize = 256;
+const MAX_QUERY_CHARS: usize = 128;
+static STATION_CACHE: OnceLock<Mutex<VecDeque<RadioStation>>> = OnceLock::new();
+
+fn station_cache() -> &'static Mutex<VecDeque<RadioStation>> {
+    STATION_CACHE.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+fn remember_stations(stations: &[RadioStation]) {
+    let Ok(mut cache) = station_cache().lock() else { return };
+    for station in stations {
+        cache.retain(|s| s.station_uuid != station.station_uuid);
+        cache.push_back(station.clone());
+        while cache.len() > STATION_CACHE_MAX {
+            cache.pop_front();
+        }
+    }
+}
+
+fn cached_station(uuid: &str) -> Option<RadioStation> {
+    station_cache()
+        .lock()
+        .ok()?
+        .iter()
+        .rev()
+        .find(|station| station.station_uuid == uuid)
+        .cloned()
+}
+
+fn valid_station_uuid(uuid: &str) -> bool {
+    let len = uuid.len();
+    (1..=96).contains(&len)
+        && uuid.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +155,33 @@ async fn get_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Strin
 }
 
 fn http_url(value: &str) -> bool {
-    reqwest::Url::parse(value).ok().is_some_and(|url| matches!(url.scheme(), "http" | "https"))
+    if value.len() > 4_096 {
+        return false;
+    }
+    reqwest::Url::parse(value).ok().is_some_and(|url| {
+        let Some(host) = url.host_str() else { return false };
+        if !matches!(url.scheme(), "http" | "https")
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || host.eq_ignore_ascii_case("localhost")
+            || host.ends_with(".localhost")
+        {
+            return false;
+        }
+        match host.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(ip)) => {
+                !ip.is_loopback() && !ip.is_private() && !ip.is_link_local() && !ip.is_unspecified()
+            }
+            Ok(std::net::IpAddr::V6(ip)) => {
+                let seg = ip.segments()[0];
+                !ip.is_loopback()
+                    && !ip.is_unspecified()
+                    && (seg & 0xfe00) != 0xfc00
+                    && (seg & 0xffc0) != 0xfe80
+            }
+            Err(_) => true,
+        }
+    })
 }
 
 pub fn normalize_station(mut station: RadioStation) -> Option<RadioStation> {
@@ -161,6 +222,9 @@ pub async fn stations(
     let limit = limit.clamp(1, 50);
     let offset = offset.min(10_000);
     let query = query.unwrap_or_default().trim();
+    if query.chars().count() > MAX_QUERY_CHARS {
+        return Err(format!("Radio search is limited to {MAX_QUERY_CHARS} characters."));
+    }
     let path = if query.is_empty() {
         format!("/json/stations/topvote?offset={offset}&limit={limit}&hidebroken=true")
     } else {
@@ -170,7 +234,30 @@ pub async fn stations(
         )
     };
     let rows: Vec<RadioStation> = get_json(&path).await?;
-    Ok(rows.into_iter().filter_map(normalize_station).collect())
+    let rows: Vec<RadioStation> = rows.into_iter().filter_map(normalize_station).collect();
+    remember_stations(&rows);
+    Ok(rows)
+}
+
+/// Resolve a station id entirely in native code. The normal path is the bounded cache populated by
+/// `stations()`; a direct lookup covers stale UI cards without trusting renderer-supplied URLs.
+pub async fn station_by_uuid(raw: &str) -> Result<RadioStation, String> {
+    let uuid = raw.trim();
+    if !valid_station_uuid(uuid) {
+        return Err("Invalid radio station id.".into());
+    }
+    if let Some(station) = cached_station(uuid) {
+        return Ok(station);
+    }
+    let path = format!("/json/stations/byuuid/{}", urlencoding::encode(uuid));
+    let rows: Vec<RadioStation> = get_json(&path).await?;
+    let station = rows
+        .into_iter()
+        .filter_map(normalize_station)
+        .find(|station| station.station_uuid == uuid)
+        .ok_or_else(|| "That radio station is no longer available.".to_string())?;
+    remember_stations(std::slice::from_ref(&station));
+    Ok(station)
 }
 
 /// Radio Browser asks clients to register a click when a station is actually played. Best effort:
@@ -251,6 +338,24 @@ mod tests {
             ..good
         });
         assert!(bad.is_none());
+    }
+
+    #[test]
+    fn radio_streams_reject_local_network_and_credentials() {
+        assert!(http_url("https://radio.example/live"));
+        assert!(!http_url("http://127.0.0.1:8000/live"));
+        assert!(!http_url("http://192.168.1.5/live"));
+        assert!(!http_url("http://[::1]/live"));
+        assert!(!http_url("https://user:pass@example.com/live"));
+        assert!(!http_url("file:///tmp/music"));
+    }
+
+    #[test]
+    fn radio_station_ids_are_small_opaque_tokens() {
+        assert!(valid_station_uuid("0f0f0f0f-1234-5678-90ab-abcdefabcdef"));
+        assert!(!valid_station_uuid(""));
+        assert!(!valid_station_uuid("../etc/passwd"));
+        assert!(!valid_station_uuid(&"x".repeat(97)));
     }
 
     #[test]

@@ -388,10 +388,11 @@ function applyLocal(lib: api.LocalLibrary) {
 	forgetLocal(lib.removed);
 }
 
-async function runLocal(call: () => Promise<api.LocalLibrary>) {
+async function runLocal(call: () => Promise<api.LocalLibrary | null>) {
 	local.loading = true;
 	try {
-		applyLocal(await call());
+		const result = await call();
+		if (result) applyLocal(result);
 	} catch (e) {
 		local.error = String(e);
 	} finally {
@@ -402,7 +403,7 @@ async function runLocal(call: () => Promise<api.LocalLibrary>) {
 /** No-op while a scan is already running: the startup scan and opening the Local tab overlap. */
 export const scanLocal = () =>
 	local.loading ? Promise.resolve() : runLocal(api.getLocalLibrary);
-export const addLocalFolder = (path: string) => runLocal(() => api.addLocalFolder(path));
+export const addLocalFolder = () => runLocal(api.addLocalFolder);
 export const removeLocalFolder = (path: string) => runLocal(() => api.removeLocalFolder(path));
 
 // --- Personalization: the Shortcuts grid, sidebar pins, play recency (see personal.ts) ----------

@@ -2,7 +2,6 @@
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { save as saveFile } from '@tauri-apps/plugin-dialog';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		PlayIcon,
@@ -626,15 +625,9 @@
 			return;
 		}
 		const title = pl?.title?.trim() || 'Ryotunes Playlist';
-		const safe = title.replace(/[\/:*?"<>|]+/g, '-').slice(0, 80);
-		const path = await saveFile({
-			defaultPath: `${safe}.json`,
-			filters: [{ name: 'Ryotunes playlist', extensions: ['json'] }]
-		});
-		if (!path || !pl) return;
+		if (!pl) return;
 		try {
-			await api.exportPlaylistFile(path, title, pl.items);
-			toast.success('Playlist exported');
+			if (await api.exportPlaylistFile(title, pl.items)) toast.success('Playlist exported');
 		} catch (e) { toast.error(String(e)); }
 	}
 

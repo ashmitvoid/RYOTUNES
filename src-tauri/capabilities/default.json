@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions required by the bundled main Ryotunes surface",
+  "description": "Least-privilege permissions for the bundled main Ryotunes surface",
   "windows": [
     "main"
   ],
@@ -14,7 +14,6 @@
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "core:window:allow-start-resize-dragging",
-    "core:window:allow-is-maximized",
-    "dialog:allow-open"
+    "core:window:allow-is-maximized"
   ]
 }

@@ -61,6 +61,11 @@ default_cap = json.loads(read('src-tauri/capabilities/default.json'))
 mini_cap = json.loads(read('src-tauri/capabilities/mini.json'))
 security_workflow = read('.github/workflows/security.yml')
 sync_server = read('crates/sync-server/src/main.rs')
+session = read('src-tauri/src/session.rs')
+local_ui = read('ui/src/lib/components/LocalMusic.svelte')
+edit_playlist_ui = read('ui/src/lib/components/EditPlaylistDialog.svelte')
+library_page = read('ui/src/routes/library/+page.svelte')
+playlist_page = read('ui/src/routes/playlist/[id]/+page.svelte')
 
 # --- frozen v2.4 identity ----------------------------------------------------
 req('version = "2.4.0"' in cargo, 'workspace version is not 2.4.0')
@@ -98,8 +103,15 @@ req('const SCAN_VERSION: &str = "5"' in local_rs and 'sidecar_cover' in local_rs
     'local cover migration/copy hardening missing')
 req('for dir in folders(db)' not in local_rs and 'scope.allow_directory(&covers, true)' in local_rs,
     'watched music folders are recursively exposed through the asset protocol')
-req(default_cap.get('windows') == ['main'] and 'dialog:allow-open' in default_cap.get('permissions', []),
-    'main capability boundary changed unexpectedly')
+req(default_cap.get('windows') == ['main'] and 'dialog:allow-open' not in default_cap.get('permissions', []),
+    'main renderer regained direct native file-dialog capability')
+req("DialogExt" in commands and "blocking_pick_folder" in commands and "blocking_save_file" in commands,
+    'filesystem pickers are not owned by native commands')
+req('@tauri-apps/plugin-dialog' not in local_ui and '@tauri-apps/plugin-dialog' not in edit_playlist_ui
+    and '@tauri-apps/plugin-dialog' not in library_page and '@tauri-apps/plugin-dialog' not in playlist_page,
+    'renderer still owns a filesystem picker path')
+req('allowed_login_navigation' in session and '.on_navigation(allowed_login_navigation)' in session,
+    'Google login WebView navigation allowlist missing')
 req(mini_cap.get('windows') == ['mini'] and 'dialog:allow-open' not in mini_cap.get('permissions', []),
     'mini player has unnecessary file-dialog capability')
 req('cargo audit' in security_workflow and 'pnpm audit' in security_workflow,
@@ -118,6 +130,10 @@ req('mod radio;' in lib and 'commands::radio_stations' in lib and 'commands::pla
     'Internet Radio command wiring missing')
 req('RADIO_ID_PREFIX' in radio and 'hidebroken=true' in radio and 'count_click' in radio,
     'bounded Radio Browser integration missing')
+req('station_by_uuid' in radio and 'STATION_CACHE_MAX' in radio and 'station_uuid: String' in commands,
+    'radio playback trusts renderer-supplied stream metadata')
+req('192.168.1.5' in radio and 'localhost' in radio,
+    'radio native stream URL local-network rejection missing')
 req('setInterval(' not in radio_ui and 'radioStations' in radio_ui and 'playRadioStation' in radio_ui,
     'Radio UI is not demand-driven')
 req('CREATE TABLE IF NOT EXISTS local_playlists' in db and 'CREATE TABLE IF NOT EXISTS local_playlist_tracks' in db,

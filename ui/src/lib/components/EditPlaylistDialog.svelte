@@ -4,7 +4,6 @@
 	// The three text/visibility fields are one write, sent on Save and only for what actually
 	// changed. The cover applies the moment a file is picked: it is stored on this machine (so it
 	// draws instantly and offline) and uploaded to YouTube Music behind the picker.
-	import { open as pickFile } from '@tauri-apps/plugin-dialog';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { ImageAdd02Icon, Delete02Icon } from '@hugeicons/core-free-icons';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -48,6 +47,7 @@
 	let isPublic = $state(false);
 	let saving = $state(false);
 	let removing = $state(false);
+	let coverBusy = $state(false);
 
 	// Fill the form from the page each time it opens, so a cancelled edit leaves nothing behind.
 	// Guarded on `open` before anything else is read: while closed, the props aren't tracked, so a
@@ -62,28 +62,23 @@
 	const preview = $derived(thumb(cover ?? fallback, 400));
 
 	async function pickCover() {
-		// JPEG and PNG only, because that is what YouTube's uploader accepts (WebP comes back 415).
-		// Keeping the picker to those beats letting someone choose a file that can only ever be
-		// this machine's copy.
-		const picked = await pickFile({
-			multiple: false,
-			title: 'Choose playlist artwork',
-			filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }]
-		});
-		if (typeof picked === 'string') await storeCover(picked);
+		await storeCover(true);
 	}
 
-	// Picking answers as soon as the file is copied. For account playlists, removing waits on
-	// YouTube because its rebuilt thumbnail is part of the answer; device playlists stay local.
-	async function storeCover(path: string | null) {
-		if (removing) return;
-		removing = path === null;
+	// Rust owns the picker, so WebKit never sees or chooses a filesystem path.
+	async function storeCover(pick: boolean) {
+		if (coverBusy) return;
+		coverBusy = true;
+		removing = !pick;
 		try {
-			const { cover: saved, thumbnail } = await api.setPlaylistCover(id, path);
+			const result = await api.setPlaylistCover(id, pick);
+			if (!result) return;
+			const { cover: saved, thumbnail } = result;
 			onchange({ cover: saved ?? undefined, ...(thumbnail ? { thumbnail } : {}) });
 		} catch (e) {
 			toast.error(String(e));
 		} finally {
+			coverBusy = false;
 			removing = false;
 		}
 	}
@@ -148,6 +143,7 @@
 						class="group relative h-32 w-32 cursor-pointer overflow-hidden rounded-xl border bg-muted"
 						onclick={pickCover}
 						aria-label="Change cover art"
+						disabled={coverBusy}
 					>
 						{#if preview}
 							<img src={preview} alt="" class="h-full w-full object-cover" />
@@ -168,7 +164,7 @@
 							variant="ghost"
 							size="sm"
 							class="gap-1.5 text-xs text-muted-foreground"
-							onclick={() => storeCover(null)}
+							onclick={() => storeCover(false)}
 							disabled={removing}
 						>
 							<HugeiconsIcon icon={Delete02Icon} class="h-3.5 w-3.5" />

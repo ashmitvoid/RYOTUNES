@@ -4,7 +4,6 @@
 	// and songs play through the normal queue, so everything past this component is shared.
 	import { onMount } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { open } from '@tauri-apps/plugin-dialog';
 	import {
 		Add01Icon,
 		Delete02Icon,
@@ -83,8 +82,7 @@
 	const SOURCE = 'Local music';
 
 	async function pickFolder() {
-		const picked = await open({ directory: true, multiple: false, title: 'Add a music folder' });
-		if (typeof picked === 'string') await addLocalFolder(picked);
+		await addLocalFolder();
 	}
 
 	// The filtered list, not the whole library: Play all plays what the list shows.

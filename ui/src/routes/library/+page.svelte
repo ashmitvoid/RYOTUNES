@@ -7,7 +7,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { open as openFile } from '@tauri-apps/plugin-dialog';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		Add01Icon,
@@ -112,15 +111,10 @@
 	let importing = $state(false);
 	async function importPlaylist() {
 		if (importing || !auth.account?.signedIn) return;
-		const path = await openFile({
-			multiple: false,
-			directory: false,
-			filters: [{ name: 'Ryotunes playlist', extensions: ['json'] }]
-		});
-		if (!path || Array.isArray(path)) return;
 		importing = true;
 		try {
-			const transfer = await api.importPlaylistFile(path);
+			const transfer = await api.importPlaylistFile();
+			if (!transfer) return;
 			if (!transfer.items.length) throw new Error('That playlist file has no tracks.');
 			const playlistId = await api.createPlaylist(transfer.title.trim() || 'Imported playlist');
 			let added = 0;

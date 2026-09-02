@@ -23,11 +23,16 @@ origins on affected platforms).
 - The normal `main` and `mini` surfaces load the bundled Ryotunes frontend, not a remote web app.
 - The Google sign-in WebView has a separate `login` label and is not included in the main/mini
   capability files.
-- The mini player has no file-dialog permission; only the main surface can open native file/folder
-  pickers.
-- Renderer-writable settings, external URLs, Listen Together endpoints, media parameters and local
-  music folders are validated again in Rust. The frontend is never treated as an authorization
-  boundary.
+- Neither bundled renderer has file-dialog permission. Playlist import/export, artwork selection
+  and local-folder selection open native pickers from Rust commands, so WebKit cannot silently
+  choose arbitrary filesystem paths.
+- Renderer-writable settings, external URLs, Listen Together endpoints and media parameters are
+  validated again in Rust. The frontend is never treated as an authorization boundary.
+- Internet Radio playback accepts only an opaque station id from WebKit. Native code resolves the
+  cached/Radio Browser station record and rejects literal localhost/private/link-local stream
+  addresses rather than accepting a renderer-supplied URL.
+- The Google sign-in WebView can navigate only to HTTPS Google/YouTube hosts and has no main/mini
+  capability set.
 - External links are opened by passing a validated HTTP(S) URL directly to the OS opener. They are
   never interpolated into a shell command.
 - The Tauri asset protocol has an empty static scope. Local cover art is copied into Ryotunes-owned
