@@ -139,6 +139,8 @@ req('RADIO_ID_PREFIX' in radio and 'hidebroken=true' in radio and 'count_click' 
     'bounded Radio Browser integration missing')
 req('station_by_uuid' in radio and 'STATION_CACHE_MAX' in radio and 'station_uuid: String' in commands,
     'radio playback trusts renderer-supplied stream metadata')
+req('.and_then(crate::radio::normalize_station)' in state,
+    'restored radio cache bypasses current native URL validation')
 req('192.168.1.5' in radio and 'localhost' in radio,
     'radio native stream URL local-network rejection missing')
 req('MAX_RADIO_RESPONSE_BYTES' in radio and 'official_mirror_host' in radio,

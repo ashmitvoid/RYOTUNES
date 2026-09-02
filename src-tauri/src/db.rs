@@ -792,11 +792,9 @@ impl Db {
     /// discovered by the user's library scan and still exists in the local_tracks table.
     pub fn has_local_track(&self, path: &str) -> bool {
         let conn = self.0.lock().unwrap();
-        conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM local_tracks WHERE path = ?1)",
-            [path],
-            |row| row.get::<_, bool>(0),
-        )
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM local_tracks WHERE path = ?1)", [path], |row| {
+            row.get::<_, bool>(0)
+        })
         .unwrap_or(false)
     }
 

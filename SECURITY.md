@@ -39,6 +39,8 @@ origins on affected platforms).
   addresses rather than accepting a renderer-supplied URL.
 - Radio Browser discovery accepts only official `*.api.radio-browser.info` mirrors and bounds
   each directory response before parsing it.
+- Persisted radio-station records are re-normalized through the same URL policy when a queue is
+  restored, so records written by an older release cannot bypass current stream validation.
 - The Google sign-in WebView can navigate only to HTTPS Google/YouTube hosts and has no main/mini
   capability set.
 - External links are opened by passing a validated HTTP(S) URL directly to the OS opener. They are

@@ -738,6 +738,7 @@ impl AppState {
                 .db
                 .get_radio_station(video_id)
                 .and_then(|json| serde_json::from_str::<crate::radio::RadioStation>(&json).ok())
+                .and_then(crate::radio::normalize_station)
                 .ok_or_else(|| ResolveError::AllClientsFailed(video_id.to_owned()))?;
             return Ok(crate::radio::playback_data(&station));
         }
