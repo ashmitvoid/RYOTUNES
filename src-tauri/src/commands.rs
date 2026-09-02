@@ -56,22 +56,15 @@ fn normalize_ui_setting(key: &str, raw: &str) -> Result<String, String> {
         "quality" => matches!(raw, "LOW" | "AUTO" | "HIGH")
             .then(|| raw.to_owned())
             .ok_or_else(|| "Unknown audio quality.".into()),
-        "enable_history"
-        | "discord_rpc"
-        | "close_to_tray"
-        | "autostart"
-        | "autoplay"
-        | "prevent_duplicates"
-        | "lyrics_boidu"
-        | "low_resource_mode" => matches!(raw, "true" | "false")
-            .then(|| raw.to_owned())
-            .ok_or_else(|| format!("{key} must be true or false.")),
+        "enable_history" | "discord_rpc" | "close_to_tray" | "autostart" | "autoplay"
+        | "prevent_duplicates" | "lyrics_boidu" | "low_resource_mode" => {
+            matches!(raw, "true" | "false")
+                .then(|| raw.to_owned())
+                .ok_or_else(|| format!("{key} must be true or false."))
+        }
         "disabled_stream_clients" => {
-            let mut names: Vec<&str> = raw
-                .split(',')
-                .map(str::trim)
-                .filter(|name| !name.is_empty())
-                .collect();
+            let mut names: Vec<&str> =
+                raw.split(',').map(str::trim).filter(|name| !name.is_empty()).collect();
             if names.iter().any(|name| !known_stream_client(name)) {
                 return Err("Unknown stream client in disabled-client list.".into());
             }

@@ -42,10 +42,7 @@ const CODE_ALPHABET: &[u8] = b"1234567890QWERTYUPASDFGHJKLZXCVBNM";
 struct Tx(mpsc::Sender<ServerMessage>);
 
 impl Tx {
-    fn send(
-        &self,
-        message: ServerMessage,
-    ) -> Result<(), mpsc::error::TrySendError<ServerMessage>> {
+    fn send(&self, message: ServerMessage) -> Result<(), mpsc::error::TrySendError<ServerMessage>> {
         self.0.try_send(message)
     }
 }
@@ -180,10 +177,7 @@ fn bounded_track(track: &Track) -> bool {
             url.len() <= MAX_THUMBNAIL_BYTES
                 && (url.starts_with("https://") || url.starts_with("http://"))
         })
-        && track
-            .queued_by
-            .as_deref()
-            .is_none_or(|name| bounded_text(name, 50))
+        && track.queued_by.as_deref().is_none_or(|name| bounded_text(name, 50))
 }
 
 fn bounded_playback(playback: &listen_protocol::Playback) -> bool {
@@ -198,9 +192,10 @@ fn bounded_playback(playback: &listen_protocol::Playback) -> bool {
     if playback.track.as_ref().is_some_and(|track| !bounded_track(track)) {
         return false;
     }
-    playback.queue.as_ref().is_none_or(|queue| {
-        queue.len() <= MAX_QUEUE_TRACKS && queue.iter().all(bounded_track)
-    })
+    playback
+        .queue
+        .as_ref()
+        .is_none_or(|queue| queue.len() <= MAX_QUEUE_TRACKS && queue.iter().all(bounded_track))
 }
 
 impl Server {
@@ -358,7 +353,8 @@ impl Server {
 
             ClientMessage::Playback(mut p) => {
                 if !bounded_playback(&p) {
-                    let _ = tx.send(err("invalid_playback", "Playback payload exceeds relay limits."));
+                    let _ =
+                        tx.send(err("invalid_playback", "Playback payload exceeds relay limits."));
                     return;
                 }
                 let (Some(me), Some(code)) = (uid.clone(), room_code.clone()) else { return };
