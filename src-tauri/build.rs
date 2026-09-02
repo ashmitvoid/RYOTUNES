@@ -1,4 +1,3 @@
-
 // Register every application command with Tauri's runtime authority. Without an AppManifest,
 // application commands registered through invoke_handler are allowed to every WebView by default,
 // including the hidden cipher/PoToken runtimes and the remote Google sign-in surface.

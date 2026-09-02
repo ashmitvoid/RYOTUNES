@@ -172,21 +172,19 @@ async fn get_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Strin
 
 fn public_ipv4(ip: std::net::Ipv4Addr) -> bool {
     let [a, b, c, _] = ip.octets();
-    !(
-        a == 0
-            || a == 10
-            || a == 127
-            || (a == 100 && (64..=127).contains(&b))
-            || (a == 169 && b == 254)
-            || (a == 172 && (16..=31).contains(&b))
-            || (a == 192 && b == 0 && c == 0)
-            || (a == 192 && b == 0 && c == 2)
-            || (a == 192 && b == 168)
-            || (a == 198 && (18..=19).contains(&b))
-            || (a == 198 && b == 51 && c == 100)
-            || (a == 203 && b == 0 && c == 113)
-            || a >= 224
-    )
+    !(a == 0
+        || a == 10
+        || a == 127
+        || (a == 100 && (64..=127).contains(&b))
+        || (a == 169 && b == 254)
+        || (a == 172 && (16..=31).contains(&b))
+        || (a == 192 && b == 0 && c == 0)
+        || (a == 192 && b == 0 && c == 2)
+        || (a == 192 && b == 168)
+        || (a == 198 && (18..=19).contains(&b))
+        || (a == 198 && b == 51 && c == 100)
+        || (a == 203 && b == 0 && c == 113)
+        || a >= 224)
 }
 
 fn public_ip(ip: std::net::IpAddr) -> bool {
