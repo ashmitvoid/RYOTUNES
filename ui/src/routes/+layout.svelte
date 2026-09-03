@@ -111,9 +111,14 @@
 		// `visible:false`, which deadlocks the only callback capable of revealing that window.
 		// Start the bridge handshake immediately; retries use ordinary timers, which continue
 		// to run for a hidden WebView. Native code also owns a bounded reveal failsafe.
+		// Palette-before-reveal is worth a short wait, not the whole IPC round-trip: gating on
+		// the token invoke alone routinely outran the native 1.5 s failsafe on a cold WebKit
+		// process, so the window was revealed natively, unhandshaken. Bound the wait.
 		const begin = () => { if (!cancelled) void attempt(0); };
-		if (beforeReveal) void beforeReveal.then(begin, begin);
-		else begin();
+		if (beforeReveal) {
+			const bounded = Promise.race([beforeReveal, new Promise<void>((r) => setTimeout(r, 250))]);
+			void bounded.then(begin, begin);
+		} else begin();
 		return () => { cancelled = true; if (timer) clearTimeout(timer); };
 	}
 
