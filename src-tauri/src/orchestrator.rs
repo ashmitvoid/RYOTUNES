@@ -8,7 +8,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use innertube::{
     find_format, rustypipe_fallback, AudioQuality, Clients, Format, InnerTube, PlayerResponse,
@@ -65,6 +65,8 @@ pub enum ResolveError {
 
 /// Client keys that need the `n`-transform applied to their stream URLs. stream selection.
 const NEEDS_N_TRANSFORM: [&str; 4] = ["WEB", "WEB_REMIX", "WEB_CREATOR", "TVHTML5"];
+/// Minimum spacing between two off-hot-path self-heals (`take_heal_slot`).
+const HEAL_WINDOW: Duration = Duration::from_secs(10 * 60);
 
 // WEB_REMIX is validated with a HEAD like every other client — see `validate_head`.
 
@@ -86,6 +88,11 @@ pub struct Orchestrator {
     /// (stream selection §2). Cleared when the cipher self-heals. `Arc` so the off-hot-path self-heal
     /// task can clear it.
     web_remix_failed: Arc<Mutex<HashSet<String>>>,
+    /// When the last self-heal ran. A WEB_REMIX HEAD 403 is routine on capped videos (see the
+    /// validation comment in `resolve`), so healing on every one of them threw away player.js,
+    /// the cipher webview and the PoToken session per track. One heal per window is plenty to
+    /// catch a config that really went stale.
+    last_heal: Arc<Mutex<Option<Instant>>>,
 }
 
 impl Orchestrator {
@@ -101,6 +108,7 @@ impl Orchestrator {
             cipher,
             potoken,
             web_remix_failed: Arc::new(Mutex::new(HashSet::new())),
+            last_heal: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -108,6 +116,16 @@ impl Orchestrator {
     /// layer on a playback 403). The next resolve for this id bypasses WEB_REMIX. stream selection §2.
     pub async fn mark_web_remix_failed(&self, video_id: &str) {
         self.web_remix_failed.lock().await.insert(video_id.to_owned());
+    }
+
+    /// Claim the one self-heal allowed per `HEAL_WINDOW`; false while a recent heal is cooling.
+    async fn take_heal_slot(&self) -> bool {
+        let mut last = self.last_heal.lock().await;
+        if last.is_some_and(|t| t.elapsed() < HEAL_WINDOW) {
+            return false;
+        }
+        *last = Some(Instant::now());
+        true
     }
 
     /// Resolve a videoId to a playable stream. stream selection full algorithm.
@@ -284,7 +302,7 @@ impl Orchestrator {
                     main_ping.clone().or_else(|| playback_ping(&resp, &key)),
                     is_upload,
                 ));
-            } else if needs_n {
+            } else if needs_n && self.take_heal_slot().await {
                 // A cipher client that fails validation may have a stale config → self-heal off
                 // the hot path so it never blocks falling through (stream selection §7). If the heal
                 // changes the config table, clear the WEB_REMIX failure memory (stream selection §2).

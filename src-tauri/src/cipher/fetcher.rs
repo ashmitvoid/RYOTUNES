@@ -53,7 +53,6 @@ impl PlayerJsFetcher {
             format!("https://www.youtube.com/s/player/{hash}/player_ias.vflset/en_GB/base.js");
         let js = get(&url).await?.error_for_status()?.text().await?;
         std::fs::write(&cached, &js)?;
-        std::fs::write(self.cache_dir.join("current_hash.txt"), format!("{hash}\n{}", now_secs()))?;
         tracing::info!(hash, bytes = js.len(), "fetched fresh player.js");
         Ok(PlayerJs { js, hash })
     }
@@ -74,9 +73,20 @@ impl PlayerJsFetcher {
         }
     }
 
+    /// The player hash, pinned on disk for the cache TTL so a listening session keeps one
+    /// player: YouTube hands different builds to consecutive `iframe_api` requests, and
+    /// following every answer meant a fresh 3 MB `base.js` and a webview rebuild per track.
     async fn current_hash(&self) -> Result<String, Error> {
+        let pin = self.cache_dir.join("current_hash.txt");
+        if let Some(hash) = read_if_fresh(&pin).and_then(|s| s.lines().next().map(str::to_owned)) {
+            if !hash.is_empty() {
+                return Ok(hash);
+            }
+        }
         let body = get(IFRAME_API).await?.error_for_status()?.text().await?;
-        extract_hash(&body).ok_or(Error::NoHash)
+        let hash = extract_hash(&body).ok_or(Error::NoHash)?;
+        std::fs::write(&pin, format!("{hash}\n{}", now_secs()))?;
+        Ok(hash)
     }
 }
 

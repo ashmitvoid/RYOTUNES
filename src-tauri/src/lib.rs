@@ -392,16 +392,22 @@ pub fn run() {
                     }
                 });
             }
-            // Hidden authentication JS is burst work, not resident UI. Tear helpers down quickly
-            // after real work and keep only their Rust-side analysis/session state.
+            // The hidden cipher/PoToken webviews are burst workers, but every track start needs
+            // them: tearing them down 15 s after use meant a fresh WebKit process, a 3 MB JS
+            // injection and a full analysis per track. Keep them resident while media is
+            // loaded and only release them after a long idle with nothing playing.
             {
                 let cipher = cipher.clone();
                 let potoken = potoken.clone();
+                let st = app_state.clone();
                 tauri::async_runtime::spawn(async move {
                     loop {
-                        tokio::time::sleep(Duration::from_secs(10)).await;
-                        cipher.teardown_if_idle(Duration::from_secs(15)).await;
-                        potoken.teardown_if_idle(Duration::from_secs(15)).await;
+                        tokio::time::sleep(Duration::from_secs(30)).await;
+                        if st.player.has_loaded_media() {
+                            continue;
+                        }
+                        cipher.teardown_if_idle(Duration::from_secs(300)).await;
+                        potoken.teardown_if_idle(Duration::from_secs(300)).await;
                     }
                 });
             }
@@ -414,10 +420,12 @@ pub fn run() {
                 main_window::enforce_floating_geometry(app.handle());
                 main_window::request_hyprland_float(app.handle());
                 // The main WebView starts hidden to avoid exposing an unpainted WebKit frame.
-                // Svelte normally reveals it immediately from `onMount`; this bounded native
-                // fallback guarantees that a lost readiness message can never leave a normal
-                // cold launch permanently tray-only.
-                main_window::arm_reveal_failsafe(app.handle(), Duration::from_millis(1500));
+                // Svelte normally reveals it from `onMount`; this bounded native fallback only
+                // guarantees that a lost readiness message can never leave a cold launch
+                // permanently tray-only. A cold WebKitGTK + SvelteKit mount takes 1-3 s on a
+                // laptop, so the fallback sits well past that or it fires before the handshake
+                // and shows an unstyled frame.
+                main_window::arm_reveal_failsafe(app.handle(), Duration::from_millis(4000));
                 spawn_heap_trimmer();
             }
             Ok(())
