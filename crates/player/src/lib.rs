@@ -122,16 +122,19 @@ impl Player {
         self.events.take()
     }
 
-    /// Load and play a fresh URL, replacing the playlist.
+    /// Load and play a fresh URL, replacing the playlist. `title` names the stream for mpv
+    /// (and so for the PipeWire node); without it mpv uses the URL, which for a signed
+    /// googlevideo link puts the whole token into the audio graph.
     pub fn load(
         &self,
         url: &str,
         headers: &HashMap<String, String>,
         gain_db: Option<f64>,
+        title: &str,
     ) -> Result<(), Error> {
         self.apply_headers(headers)?;
         self.set_gain(gain_db)?;
-        self.mpv.command("loadfile", &[&quoted(url), "replace"])?;
+        self.mpv.command("loadfile", &[&quoted(url), "replace", "-1", &title_option(title)])?;
         // Close→pause can happen before mpv's property notification reaches the event thread.
         // Mark the session loaded immediately so background lifecycle can never mistake that tiny
         // transition window for an empty player. The observed property corrects this on failure/EOF.
@@ -144,8 +147,8 @@ impl Player {
     /// Note: mpv's `http-header-fields`/`user-agent` are global properties, so appended tracks
     /// inherit the currently-set headers. Ordinary direct-URL streams do not require per-track
     /// cookies; upload-specific headers are handled before a track is loaded.
-    pub fn enqueue(&self, url: &str) -> Result<(), Error> {
-        self.mpv.command("loadfile", &[&quoted(url), "append"])?;
+    pub fn enqueue(&self, url: &str, title: &str) -> Result<(), Error> {
+        self.mpv.command("loadfile", &[&quoted(url), "append", "-1", &title_option(title)])?;
         Ok(())
     }
 
@@ -160,6 +163,11 @@ impl Player {
     /// lookahead" apart from "stalled — load the next track explicitly".
     pub fn is_idle(&self) -> bool {
         self.mpv.get_property::<bool>("idle-active").unwrap_or(true)
+    }
+
+    /// The title mpv reports for the current file (the per-file `force-media-title` once set).
+    pub fn media_title(&self) -> Option<String> {
+        self.mpv.get_property::<String>("media-title").ok()
     }
 
     /// Cheap event-driven loaded-media state for background lifecycle decisions. Unlike
@@ -412,6 +420,14 @@ fn event_loop(
 /// round-trip byte for byte through `playlist/0/filename`).
 fn quoted(arg: &str) -> String {
     format!("\"{}\"", arg.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Per-file `force-media-title` for `loadfile`'s options argument. Two parsers see it: the
+/// command-string parser (libmpv2 joins the args into one line) needs the token quoted, and the
+/// comma-separated option list inside needs the value length-prefixed (`%len%...`), which takes
+/// any bytes verbatim. A per-file option also leaves the gapless lookahead's title untouched.
+fn title_option(title: &str) -> String {
+    quoted(&format!("force-media-title=%{}%{}", title.len(), title))
 }
 
 /// Slider percent → mpv `volume` value, over a 60 dB range. mpv applies gain = (v/100)³,

@@ -1504,9 +1504,12 @@ impl AppState {
         if self.generation.load(Ordering::SeqCst) != gen {
             return false; // user moved on
         }
-        if let Err(e) =
-            self.player.load(&data.stream_url, &data.headers, loudness_gain(data.loudness_db))
-        {
+        if let Err(e) = self.player.load(
+            &data.stream_url,
+            &data.headers,
+            loudness_gain(data.loudness_db),
+            &media_title(&item.title, &item.artists),
+        ) {
             self.emit_error(&item.video_id, &e.to_string());
             return false;
         }
@@ -1664,7 +1667,8 @@ impl AppState {
         }
         // Headers are global in mpv; the direct-URL clients need none beyond UA, which the
         // current track already set. Just append the URL.
-        if let Err(e) = self.player.enqueue(&data.stream_url) {
+        let title = q.items.get(next_idx).map(|i| media_title(&i.title, &i.artists)).unwrap_or_default();
+        if let Err(e) = self.player.enqueue(&data.stream_url, &title) {
             tracing::warn!(error = %e, "enqueue lookahead failed");
             return;
         }
@@ -2434,9 +2438,12 @@ impl AppState {
         if self.generation.load(Ordering::SeqCst) != gen {
             return; // superseded by a newer sync
         }
-        if let Err(e) =
-            self.player.load(&data.stream_url, &data.headers, loudness_gain(data.loudness_db))
-        {
+        if let Err(e) = self.player.load(
+            &data.stream_url,
+            &data.headers,
+            loudness_gain(data.loudness_db),
+            &media_title(&track.title, &track.artist),
+        ) {
             self.emit_error(&track.id, &e.to_string());
             return;
         }
@@ -3379,6 +3386,16 @@ pub fn saved_volume(db: &Db) -> i64 {
 fn loudness_gain(loudness_db: Option<f64>) -> Option<f64> {
     let gain = TARGET_LUFS - (loudness_db? - 14.0);
     (gain < -0.05).then(|| gain.max(-24.0))
+}
+
+/// "Artist – Title" for mpv's per-file media title (what PipeWire and mpv's own metadata show).
+fn media_title(title: &str, artists: &str) -> String {
+    match (title.trim(), artists.trim()) {
+        ("", "") => "Ryotunes".to_owned(),
+        (t, "") => t.to_owned(),
+        ("", a) => a.to_owned(),
+        (t, a) => format!("{a} – {t}"),
+    }
 }
 
 /// Loudness target, matching YouTube Music's own player rather than the video site's -14.
