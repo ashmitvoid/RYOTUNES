@@ -10,6 +10,13 @@ rust-version = "1.80"
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Tauri's `dev` cfg is the absence of `custom-protocol`: without it a release binary still
+# points its window at `build.devUrl`. Default it on so `cargo build --release` (the source
+# PKGBUILD) ships the bundled frontend; `cargo tauri dev` passes --no-default-features.
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
