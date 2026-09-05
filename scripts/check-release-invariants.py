@@ -268,7 +268,8 @@ for token in ['--ryo-paper:#d2cabd','--ryo-paper-lift:#e2d8c9','--ryo-panel:#c4b
 req('professional Light compatibility for legacy dark-only overlay chrome' in css, 'Light-theme legacy surface compatibility pass missing')
 req("'system' | 'light' | 'dark'" in theme and 'prefers-color-scheme: dark' in theme, 'Follow System/Light/Dark engine missing')
 req('@media (prefers-reduced-motion: reduce)' in css and 'data-low-resource="true"' in css, 'Reduced Motion/Low Resource global guards missing')
-req('content-visibility:auto' in css and '.ryo-is-scrolling img { transition:none !important; }' in css, 'scroll-time paint/animation reduction missing')
+req('content-visibility:auto' in css, 'deep Home shelves must stay content-visibility:auto')
+req('ryo-is-scrolling' not in css and 'ryo-is-scrolling' not in home and 'ryo-is-scrolling' not in scroll, 'a scroll-time class toggle restyles the whole page on every wheel notch; do not reintroduce it')
 # Prevent accidental permanent frontend clocks in the shell/search/home/mini paths.
 for rel in ['ui/src/routes/+layout.svelte','ui/src/routes/+page.svelte','ui/src/routes/search/+page.svelte','ui/src/lib/components/MiniPlayer.svelte','ui/src/lib/player.svelte.ts']:
     req('setInterval(' not in read(rel), f'permanent interval introduced in hot frontend path: {rel}')
