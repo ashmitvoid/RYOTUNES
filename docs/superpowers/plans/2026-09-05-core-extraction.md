@@ -265,7 +265,7 @@ git commit -m "core: add the ryotunes-core crate with the host traits"
 **Interfaces:**
 - Produces: `ryotunes_core::{db, http}` with the same `pub` items the host used via `crate::db` / `crate::http`.
 
-Only these two are leaves. `radio.rs` imports `crate::orchestrator::PlaybackData`, `lyrics.rs` takes `&AppState`, and `lyrics.rs`/`discord.rs` call `crate::local::is_local_song`; those three ride with the modules they depend on (`local` in Task 4, `orchestrator`/`state` in Task 5). Core can never depend on the host, so a module moves only once everything it imports is already in core.
+Only these two are leaves. `radio.rs` imports `crate::orchestrator::PlaybackData`, `lyrics.rs` takes `&AppState`, and `lyrics.rs`/`discord.rs` call `crate::local::is_local_song`; those three ride with the modules they depend on (`local`, `orchestrator` and `state` in Task 5). Core can never depend on the host, so a module moves only once everything it imports is already in core.
 
 - [ ] **Step 1: Confirm the two modules import nothing from the host**
 
@@ -470,145 +470,31 @@ git commit -m "core: move cipher and potoken behind the JsBridge seam"
 
 ---
 
-### Task 4: Move the integrations behind `EventSink` and `Paths`
+### Task 4: Move media and Listen Together behind `EventSink`
+
+Landed as commit 85cd37d. Scope shrank from the original text for the same reason as Task 2: `local.rs` returns `crate::orchestrator::PlaybackData` and `lastfm.rs` takes `&AppState`, so both move in Task 5. What landed:
 
 **Files:**
-- Move: `src-tauri/src/media.rs`, `src-tauri/src/lastfm.rs`, `src-tauri/src/local.rs`, `src-tauri/src/listentogether/` to `crates/core/src/`
-- Create: `src-tauri/src/host_sink.rs` (the `EventSink` over `AppHandle`)
-- Create: `src-tauri/src/local_scope.rs` (the Tauri asset-protocol allow-listing that stays in the host)
-- Modify: `src-tauri/src/lib.rs`, `src-tauri/src/commands.rs`, `src-tauri/src/ryoku_theme.rs`
+- Moved: `src-tauri/src/media.rs`, `src-tauri/src/listentogether/` to `crates/core/src/`
+- Created: `src-tauri/src/host_sink.rs` (`TauriSink(AppHandle)` implementing `EventSink`)
+- Modified: `src-tauri/src/lib.rs` (sink construction, media command channel drained by `handle_media_event`), `src-tauri/src/ryoku_theme.rs` (`spawn_watcher(sink: Arc<dyn EventSink>)`), `src-tauri/src/taskbar.rs` (Windows shim)
 
 **Interfaces:**
-- Consumes: `host::{EventSink, Paths}`.
-- Produces: `ryotunes_core::media::spawn(sink: Arc<dyn EventSink>, commands: MediaCommands) -> Option<MediaHandle>` where `MediaCommands` is the channel the host already drains in `media::handle_event`; `ryotunes_core::lastfm::spawn(session_key: Option<String>) -> LastfmHandle` and `lastfm::emit_state(sink: &dyn EventSink, ...)`; `ryotunes_core::listentogether::LtSession::new(sink: Arc<dyn EventSink>, url: String)`; `ryotunes_core::local::{scan, covers_dir(paths: &Paths), ...}`.
-
-- [ ] **Step 1: Write the host sink and its test**
-
-`src-tauri/src/host_sink.rs`:
-
-```rust
-//! `EventSink` for the Tauri host: every core event becomes a Tauri event on every window.
-
-use ryotunes_core::host::EventSink;
-use serde_json::Value;
-use tauri::{AppHandle, Emitter};
-
-pub struct TauriSink(pub AppHandle);
-
-impl EventSink for TauriSink {
-    fn emit(&self, event: &'static str, payload: Value) {
-        if let Err(e) = self.0.emit(event, payload) {
-            tracing::debug!(event, error = %e, "event emit failed (no window?)");
-        }
-    }
-}
-```
-
-There is no unit test for the sink itself (it needs a running Tauri app); its contract is covered by the smoke test in Step 5. The core side is tested with `RecordingSink` in Step 3.
-
-- [ ] **Step 2: Move the modules and replace `AppHandle`**
-
-```bash
-git mv src-tauri/src/media.rs crates/core/src/media.rs
-git mv src-tauri/src/lastfm.rs crates/core/src/lastfm.rs
-git mv src-tauri/src/local.rs crates/core/src/local.rs
-git mv src-tauri/src/listentogether crates/core/src/listentogether
-```
-
-Add `pub mod media; pub mod lastfm; pub mod local; pub mod listentogether;` to core's `lib.rs`.
-
-Substitutions:
-
-| File | Before | After |
-|---|---|---|
-| `media.rs:81` | `pub fn spawn(app: AppHandle) -> Option<MediaHandle>` | `pub fn spawn(sink: Arc<dyn EventSink>, commands: tokio::sync::mpsc::UnboundedSender<MediaControlEvent>) -> Option<MediaHandle>` |
-| `media.rs:193` | `pub(crate) fn handle_event(app: &AppHandle, event: MediaControlEvent)` | deleted from core; the host keeps a `handle_media_event(state: Arc<AppState>, event)` in `lib.rs` draining the receiver and calling the same `AppState` methods it calls today |
-| `lastfm.rs:279` | `fn emit_state(app: &tauri::AppHandle, ...)` | `pub fn emit_state(sink: &dyn EventSink, ...)` with `sink.emit("lastfm-state", json!({...}))` |
-| `lastfm.rs:113,314` | `tauri::async_runtime::spawn` | `tokio::spawn` |
-| `listentogether/mod.rs:146,156` | `app: AppHandle` | `sink: Arc<dyn EventSink>` |
-| `listentogether/mod.rs` `emit_state` | `self.app.emit("lt-state", ...)` | `self.sink.emit("lt-state", ...)` |
-| `local.rs:686` | `pub fn covers_dir(app: &tauri::AppHandle) -> PathBuf` | `pub fn covers_dir(paths: &Paths) -> PathBuf { paths.covers_dir() }` (the XDG fallbacks move into the host's `Paths` construction) |
-| `local.rs:646,664` | `allow_covers`, `allow_music_paths` | moved verbatim to `src-tauri/src/local_scope.rs`, they are Tauri asset-protocol scope calls |
-
-- [ ] **Step 3: Test the core side with the recording sink**
-
-Add to `crates/core/src/listentogether/mod.rs` tests:
-
-```rust
-#[tokio::test]
-async fn emit_state_reaches_the_sink() {
-    use crate::host::test_support::RecordingSink;
-    let sink = std::sync::Arc::new(RecordingSink::default());
-    let (session, _rx) = LtSession::new(sink.clone(), "wss://example.invalid".into());
-    session.emit_state().await;
-    let events = sink.events.lock().unwrap();
-    assert_eq!(events.last().map(|e| e.0), Some("lt-state"));
-}
-```
-
-`RecordingSink` is `#[cfg(test)]` and `pub`, so it is reachable from core's own tests.
-
-Run: `cargo test -p ryotunes-core emit_state_reaches_the_sink`
-Expected: PASS.
-
-- [ ] **Step 4: Wire the host**
-
-In `src-tauri/src/lib.rs` setup:
-
-```rust
-let paths = ryotunes_core::host::Paths {
-    data_dir: data_dir.clone(),
-    cache_dir: cache_root.clone(),
-};
-let sink: Arc<dyn ryotunes_core::host::EventSink> = Arc::new(host_sink::TauriSink(handle.clone()));
-let (media_tx, mut media_rx) = tokio::sync::mpsc::unbounded_channel();
-let media = media::spawn(sink.clone(), media_tx);
-let (lt, lt_sync_rx) = listentogether::LtSession::new(sink.clone(), lt_url);
-```
-
-and after `app_state` exists:
-
-```rust
-{
-    let st = app_state.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Some(ev) = media_rx.recv().await {
-            handle_media_event(st.clone(), ev).await;
-        }
-    });
-}
-```
-
-`handle_media_event` is the body of the old `media::handle_event`, moved into `lib.rs` unchanged apart from taking `Arc<AppState>` instead of looking it up through `app.state()`.
-
-`ryoku_theme.rs` stays in the host for now (it is Linux desktop glue that emits `ryoku-theme-changed`): change `spawn_watcher(app: tauri::AppHandle)` to `spawn_watcher(sink: Arc<dyn EventSink>)` and `app.emit(...)` to `sink.emit(...)` so it is ready to move in phase 2.
-
-- [ ] **Step 5: Build, test, smoke**
-
-Run: `cargo check --workspace --locked && cargo test --workspace --locked`
-Expected: green.
-
-Run: `cargo tauri build --no-bundle && RUST_LOG=info ./target/release/ryotunes`, play a track, then `playerctl -p ryotunes pause` and `playerctl -p ryotunes play`.
-Expected: the UI reflects both changes within a second (the `playback-state` event went through `TauriSink`); `busctl --user list | grep MediaPlayer2.ryotunes` shows the MPRIS name; Settings shows the Last.fm status card unchanged.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add -A crates/core src-tauri
-git commit -m "core: move media, lastfm, local and listen together behind EventSink"
-```
+- Produces: `ryotunes_core::media::spawn(sink: Arc<dyn EventSink>, commands: UnboundedSender<MediaControlEvent>) -> Option<MediaHandle>`; `ryotunes_core::listentogether::LtSession::new(sink: Arc<dyn EventSink>, url: String)`; `host_sink::TauriSink`.
+- Test: `listentogether::tests::emit_state_reaches_the_sink` using `host::test_support::RecordingSink`.
 
 ---
 
-### Task 5: Move `orchestrator.rs`, `state.rs`, their dependants and the session logic
+### Task 5: Move `orchestrator.rs`, `state.rs`, `local.rs`, `lastfm.rs`, their dependants and the session logic
 
 **Files:**
-- Move: `src-tauri/src/orchestrator.rs`, `src-tauri/src/state.rs`, `src-tauri/src/radio.rs`, `src-tauri/src/lyrics.rs`, `src-tauri/src/discord.rs` to `crates/core/src/` (the last three were deferred from Task 2: `radio` imports `orchestrator::PlaybackData`, `lyrics` takes `&AppState`, `lyrics`/`discord` call `local::is_local_song`, which Task 4 put in core)
+- Move: `src-tauri/src/orchestrator.rs`, `src-tauri/src/state.rs`, `src-tauri/src/local.rs`, `src-tauri/src/lastfm.rs`, `src-tauri/src/radio.rs`, `src-tauri/src/lyrics.rs`, `src-tauri/src/discord.rs` to `crates/core/src/` (`local`/`lastfm` deferred from Task 4: `local::playback_data` returns `orchestrator::PlaybackData`, `lastfm::{connect,disconnect,status}` take `AppState`; the last three deferred from Task 2: `radio` imports `orchestrator::PlaybackData`, `lyrics` takes `&AppState`, `lyrics`/`discord` call `local::is_local_song`, which Task 4 put in core)
 - Split: `src-tauri/src/session.rs` into `crates/core/src/session.rs` (cookie/account bookkeeping, `allowed_login_navigation` and its tests) and `src-tauri/src/login_webview.rs` (the visible Google login window, implementing `LoginFlow`)
-- Modify: `src-tauri/src/lib.rs`, `src-tauri/src/commands.rs`
+- Create: `src-tauri/src/local_scope.rs` (`allow_covers`, `allow_music_paths`: Tauri asset-protocol scope calls, verbatim from `local.rs`)
+- Modify: `src-tauri/src/lib.rs` (build `Paths`, `local::covers_dir(&paths)`), `src-tauri/src/commands.rs`
 
 **Interfaces:**
-- Consumes: everything above.
+- Consumes: everything above. `local::covers_dir(paths: &Paths) -> PathBuf { paths.covers_dir() }` (XDG fallbacks move into the host's `Paths` construction); `lastfm::emit_state(sink: &dyn EventSink, ...)` emitting `lastfm-state`; `lastfm::{connect,disconnect,status}` reach the sink through `state.sink`; `lastfm::spawn` uses `tokio::spawn`; `tauri::Url::parse` in `lastfm::browser_url` becomes `url::Url::parse` (`url` is already a transitive dependency of `reqwest`; add `url = "2"` to `crates/core/Cargo.toml`, the one allowed extra since it is already in the lock).
 - Produces: `ryotunes_core::state::AppState::new(it, clients, player, db, sink: Arc<dyn EventSink>, login: Arc<dyn LoginFlow>, paths: Paths, orchestrator, lt, media, discord, lastfm)`; `AppState::sign_in(self: &Arc<Self>)` which awaits `self.login.sign_in()` and then runs today's cookie-application code; `AppState::emit(&self, event, payload)` replacing every `self.app.emit`; `ryotunes_core::{radio, lyrics, discord}` with their existing `pub` items.
 
 - [ ] **Step 1: Move and let the compiler list the edits**
@@ -617,12 +503,14 @@ git commit -m "core: move media, lastfm, local and listen together behind EventS
 git mv src-tauri/src/orchestrator.rs crates/core/src/orchestrator.rs
 git mv src-tauri/src/state.rs crates/core/src/state.rs
 git mv src-tauri/src/session.rs crates/core/src/session.rs
+git mv src-tauri/src/local.rs crates/core/src/local.rs
+git mv src-tauri/src/lastfm.rs crates/core/src/lastfm.rs
 git mv src-tauri/src/radio.rs crates/core/src/radio.rs
 git mv src-tauri/src/lyrics.rs crates/core/src/lyrics.rs
 git mv src-tauri/src/discord.rs crates/core/src/discord.rs
 ```
 
-Add `pub mod orchestrator; pub mod state; pub mod session; pub mod radio; pub mod lyrics; pub mod discord;` to core's `lib.rs` and replace `mod ...;` with `use ryotunes_core::{...};` in the host. Run `cargo check -p ryotunes-core`.
+Add `pub mod orchestrator; pub mod state; pub mod session; pub mod local; pub mod lastfm; pub mod radio; pub mod lyrics; pub mod discord;` to core's `lib.rs` and replace `mod ...;` with `use ryotunes_core::{...};` in the host. Run `cargo check -p ryotunes-core`.
 Expected: errors only at `state.rs:15,54,328` (`AppHandle`), the ten `self.app.emit(...)` sites, the `tauri::async_runtime::spawn` sites in `state.rs` (`820`, `1314`, `1391`, `2066`) and `orchestrator.rs`, and `session.rs:13-15` plus `open_login`. `radio`, `lyrics` and `discord` need no edits beyond their `crate::` paths, which stay valid because their targets moved with them.
 
 - [ ] **Step 2: Replace `app` with `sink` + `login` in `AppState`**
@@ -698,7 +586,7 @@ Expected: the Google window opens, closes on completion, `auth-changed` reaches 
 
 ```bash
 git add -A crates/core src-tauri
-git commit -m "core: move state, orchestrator and session; host implements LoginFlow"
+git commit -m "core: move state, orchestrator, local, lastfm and session; host implements LoginFlow"
 ```
 
 ---
@@ -758,4 +646,4 @@ git commit -m "host: forward every command into ryotunes-core"
 
 - Spec coverage (phase 1 only): 4.1 crate table (Tasks 1-6), 4.2 the three traits (Task 1, used in 3-5), `Paths` (Tasks 1, 4), `tokio::spawn` replacement (Tasks 3-5), behaviour parity gates (Global Constraints, Task 6 Step 4). Sections 4.3-4.4 (protocol, lifecycle), 5 (client), 6 daemon-side `JsBridge`, 7 and 8.2-8.4 are later phases by design.
 - Placeholders: none; every code step shows the code or the exact substitution.
-- Type consistency: `EventSink::emit(&self, &'static str, Value)` everywhere; `JsSession::clone_session` is defined in Task 1 and used in Task 3; `Paths::covers_dir` defined in Task 1 and used in Task 4; `AppState::emit` defined in Task 5 and used by the substitutions there.
+- Type consistency: `EventSink::emit(&self, &'static str, Value)` everywhere; `JsSession::clone_session` is defined in Task 1 and used in Task 3; `Paths::covers_dir` defined in Task 1 and used in Task 5; `AppState::emit` defined in Task 5 and used by the substitutions there.
