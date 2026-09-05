@@ -5,6 +5,7 @@ members = [
     "crates/player",
     "crates/listen-protocol",
     "crates/sync-server",
+    "crates/core",
     "src-tauri",
 ]
 
@@ -23,6 +24,8 @@ thiserror = "2"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 rand = "0.8"
 listen-protocol = { path = "crates/listen-protocol" }
+async-trait = "0.1"
+ryotunes-core = { path = "crates/core" }
 
 # Release profile: thin LTO + one codegen unit for cross-crate optimization, symbols stripped
 # for size: the desktop package should stay lean without changing runtime behaviour.
