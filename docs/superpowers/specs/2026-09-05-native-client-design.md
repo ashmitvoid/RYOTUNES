@@ -111,6 +111,8 @@ pub trait EventSink: Send + Sync + 'static {
 #[async_trait::async_trait]
 pub trait JsBridge: Send + Sync {
     async fn create(&self, label: &str, harness_html: &str, init_script: &str) -> Result<Box<dyn JsSession>, JsError>;
+    /// Destroy whatever a cancelled `create` left under `label` and wait until the label is free.
+    async fn reclaim(&self, label: &str);
 }
 #[async_trait::async_trait]
 pub trait JsSession: Send + Sync {

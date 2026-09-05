@@ -142,6 +142,9 @@ pub trait JsBridge: Send + Sync + 'static {
         harness_html: &str,
         init_script: &str,
     ) -> Result<Box<dyn JsSession>, JsError>;
+    /// Destroy any environment left under `label` by a cancelled `create` and wait until the
+    /// label is free (`webview.rs` `destroy_and_wait`). The PoToken teardown reclaims by label.
+    async fn reclaim(&self, label: &str);
 }
 
 /// One live environment. Mirrors `src-tauri/src/webview.rs` `Bridge` one to one.
