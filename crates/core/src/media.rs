@@ -10,12 +10,15 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 use std::time::Duration;
 
-use souvlaki::{
-    MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig,
-};
+use souvlaki::{MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::host::EventSink;
+
+/// Re-exported for hosts that drain [`spawn`]'s control-event channel into `AppState`. The daemon
+/// pattern-matches these to route OS media-key presses, and cannot depend on `souvlaki` directly
+/// without pulling a second copy of the crate; sourcing them from the core keeps one type.
+pub use souvlaki::{MediaControlEvent, MediaPosition, SeekDirection};
 
 /// Update messages: app → media-controls owner thread.
 enum MediaUpdate {
