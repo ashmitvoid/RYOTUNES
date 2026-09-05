@@ -176,7 +176,7 @@ req('void attempt(0);' in layout and 'requestAnimationFrame(() => void attempt(0
 req("const teardownReady = acknowledgeFrontend('main', ryokuTokens.ready)" in layout and "const teardownReady = acknowledgeFrontend('mini', ryokuTokens.ready)" in layout, 'main/mini theme-prime/reveal handshake not shared')
 req('pub fn frontend_ready(app: &AppHandle)' in main and 'w.show().map_err' in main and 'crate::mini::close(app);' in main, 'main reveal does not close mini only after successful show')
 req('pub fn arm_reveal_failsafe(app: &AppHandle, delay: Duration)' in main and 'frontend readiness deadline expired' in main, 'native hidden-window reveal failsafe missing')
-req('arm_reveal_failsafe(app.handle(), Duration::from_millis(1500))' in lib and 'arm_reveal_failsafe(app, Duration::from_millis(220))' in main, 'cold-start/second-launch reveal recovery missing')
+req('arm_reveal_failsafe(app.handle(), Duration::from_millis(4000))' in lib and 'arm_reveal_failsafe(app, Duration::from_millis(220))' in main, 'cold-start/second-launch reveal recovery missing')
 req('crate::tray::show_main(&app);' in commands and 'pub async fn close_mini' in commands, 'mini restore button does not use shared main restore path')
 req('RYOTUNES_APP_ID: &str = "dev.ryoku.ryotunes"' in main and 'RYOTUNES_MAIN_TITLE: &str = "Ryotunes"' in main, 'stable main window identity missing')
 req('args(["keyword", "windowrulev2"' not in main and "arg(\"windowrulev2\")" not in main, 'runtime Hyprland windowrule injection returned')

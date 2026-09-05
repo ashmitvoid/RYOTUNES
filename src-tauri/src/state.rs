@@ -1667,7 +1667,8 @@ impl AppState {
         }
         // Headers are global in mpv; the direct-URL clients need none beyond UA, which the
         // current track already set. Just append the URL.
-        let title = q.items.get(next_idx).map(|i| media_title(&i.title, &i.artists)).unwrap_or_default();
+        let title =
+            q.items.get(next_idx).map(|i| media_title(&i.title, &i.artists)).unwrap_or_default();
         if let Err(e) = self.player.enqueue(&data.stream_url, &title) {
             tracing::warn!(error = %e, "enqueue lookahead failed");
             return;

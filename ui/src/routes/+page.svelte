@@ -216,7 +216,7 @@
 	}
 
 	// Home uses the layout's <main> as its scroll container. The observer only handles
-	// shallow-window resize correction. It used to also toggle `ryo-is-scrolling` on <main> on
+	// shallow-window resize correction. It used to also toggle a scrolling class on <main> on
 	// every scroll event and 110 ms after the last one; with rules keyed on that class reaching
 	// every <img> and every promoted `.ryo-art-wash` layer, each toggle was a style recalc of the
 	// whole page plus compositing-layer churn, twice per wheel notch: the scroll lag itself.
