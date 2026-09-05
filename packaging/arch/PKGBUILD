@@ -52,7 +52,7 @@ build() {
   pnpm build
 
   cd "$srcdir/ryotunes"
-  cargo build --release --locked --package ryotunes --package sync-server
+  cargo build --release --locked --package ryotunes --package sync-server --package ryotunesd --package ryotunes-cli
 }
 
 check() {
@@ -66,6 +66,10 @@ package() {
   cd "$srcdir/ryotunes"
   install -Dm755 target/release/ryotunes "$pkgdir/usr/bin/ryotunes"
   install -Dm755 target/release/ryotunes-sync "$pkgdir/usr/bin/ryotunes-sync"
+  install -Dm755 target/release/ryotunesd "$pkgdir/usr/bin/ryotunesd"
+  install -Dm755 target/release/ryotunes-cli "$pkgdir/usr/bin/ryotunes-cli"
+  install -Dm644 packaging/linux/ryotunesd.socket "$pkgdir/usr/lib/systemd/user/ryotunesd.socket"
+  install -Dm644 packaging/linux/ryotunesd.service "$pkgdir/usr/lib/systemd/user/ryotunesd.service"
   install -Dm644 packaging/linux/ryotunes.desktop "$pkgdir/usr/share/applications/ryotunes.desktop"
   install -Dm644 packaging/linux/dev.ryoku.ryotunes.metainfo.xml "$pkgdir/usr/share/metainfo/dev.ryoku.ryotunes.metainfo.xml"
   install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/ryotunes.png"

@@ -37,6 +37,17 @@ The workspace separates the playback core from whoever renders it. Phase 1 of th
 | `client/` | the QML client run by Quickshell: `qs -c ryotunes` (shipped as `/usr/share/ryotunes/client`), plus `client/mini/` for the mini player window | new, replaces `ui/` |
 | `src-tauri/` | deleted at the end of phase 4 | removed |
 
+## Daemon
+
+`ryotunesd` hosts `crates/core` behind a unix socket so the interface can be killed without stopping playback. It is a systemd user service, socket-activated by `ryotunesd.socket` on the first client connection, and it exits on a bounded idle (nothing playing and no subscriber) after five minutes.
+
+- Socket: `$XDG_RUNTIME_DIR/ryotunes/ryotunesd.sock`, in a `0700` directory, created under `umask 077`. A single instance is enforced with an `flock` on `ryotunesd.sock.lock`; a second launch connects to the incumbent, asks it to `show`, and exits 0.
+- Framing: newline-delimited JSON, one object per line, both directions. Request `{"id":12,"method":"play","params":{"videoId":"…"}}`; response `{"id":12,"result":…}` or `{"id":12,"error":{"code":"…","message":"…"}}`; event `{"event":"position","data":{"position":12.3}}`.
+- Methods: every `#[tauri::command]` name and JSON shape, plus the control methods `hello` (returns `{"protocol":1,"daemon":"2.4.1"}`), `subscribe` (opts into events and replies with the current `playback`/`queue`/`settings`/`auth` snapshot), `show` (raise a subscribed client's window, or launch the client when none is listening), `quit` (stop playback, unregister MPRIS, exit), and `sign_in` (open the Google login window).
+- `ryotunes-cli <method> [json]` runs one method and prints its `result`; `ryotunes-cli events [name…]` subscribes and prints one event per line until interrupted.
+
+The Tauri app and the daemon share the same data directory (`$XDG_DATA_HOME/dev.ryoku.ryotunes`); run one at a time until the cutover.
+
 ## Background playback
 
 Closing the main window is not the same operation as quitting the application.
