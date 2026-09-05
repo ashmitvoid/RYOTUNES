@@ -16,7 +16,17 @@ Rectangle {
     property int index: -1
     property bool active: false
     property bool compact: false
+    // Full-variant extras (opt-in so the compact Home shelves are unchanged): the play count from
+    // an album page, the album-track number layout with no cover, the ⋯ menu and its two
+    // context-specific items. `menuRequested` carries scene coords for the list's shared Menu.
+    property bool showPlayCount: false
+    property bool hideThumb: false
+    property bool menu: false
+    property bool canAdd: false
+    property bool canRemove: false
+    property string removeLabel: "Remove from playlist"
     signal play()
+    signal menuRequested(real sx, real sy)
 
     // Seeded from the row's own snapshot; a rating call updates it optimistically. Reset when the
     // delegate is reused for a different song.
@@ -40,9 +50,18 @@ Rectangle {
     }
 
     MouseArea {
+        id: playArea
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.play()
+        acceptedButtons: root.menu ? (Qt.LeftButton | Qt.RightButton) : Qt.LeftButton
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.RightButton) {
+                var p = playArea.mapToItem(null, mouse.x, mouse.y);
+                root.menuRequested(p.x, p.y);
+                return;
+            }
+            root.play();
+        }
     }
 
     RowLayout {
@@ -73,8 +92,10 @@ Rectangle {
             }
         }
 
-        // thumbnail
+        // thumbnail (album track lists hide it — the number is the identity there)
         Artwork {
+            visible: !root.hideThumb
+            Layout.preferredWidth: root.hideThumb ? 0 : Style.sp(10)
             url: root.song && root.song.thumbnail ? root.song.thumbnail : ""
             px: Style.sp(10)
         }
@@ -105,12 +126,48 @@ Rectangle {
             }
         }
 
-        // like (compact) or duration (full)
+        // compact: single like heart
         IconButton {
             visible: root.compact && root.canRate
             icon: "heart"
             iconSize: Style.fs.md
             diameter: Style.sp(8)
+            active: root.rated === "like"
+            iconColor: root.rated === "like" ? Tokens.sun : Tokens.inkMuted
+            onClicked: root.toggleLike()
+        }
+
+        // full: play count, explicit mark, like, duration
+        Text {
+            visible: !root.compact && root.showPlayCount && !!(root.song && root.song.play_count)
+            text: (root.song && root.song.play_count) ? (root.song.play_count + " plays") : ""
+            color: Tokens.inkFaint
+            font.family: Style.fontMono
+            font.pixelSize: Style.fs.xs
+        }
+        Rectangle {
+            visible: !root.compact && !!(root.song && root.song.explicit)
+            implicitWidth: Style.sp(4)
+            implicitHeight: Style.sp(4)
+            radius: Style.sp(1)
+            color: "transparent"
+            border.width: 1
+            border.color: Tokens.inkFaint
+            Text {
+                anchors.centerIn: parent
+                text: "E"
+                color: Tokens.inkMuted
+                font.family: Style.fontUi
+                font.pixelSize: Style.fs.xs
+                font.weight: Font.DemiBold
+            }
+        }
+        IconButton {
+            visible: !root.compact && root.canRate
+            icon: "heart"
+            iconSize: Style.fs.md
+            diameter: Style.sp(8)
+            opacity: (rowHover.hovered || root.rated === "like") ? 1 : 0
             active: root.rated === "like"
             iconColor: root.rated === "like" ? Tokens.sun : Tokens.inkMuted
             onClicked: root.toggleLike()
@@ -121,6 +178,41 @@ Rectangle {
             color: Tokens.inkFaint
             font.family: Style.fontMono
             font.pixelSize: Style.fs.sm
+        }
+
+        // ⋯ options trigger (opt-in). Three dots drawn inline — the icon set has no ellipsis glyph.
+        Item {
+            id: menuBtn
+            visible: root.menu
+            Layout.preferredWidth: root.menu ? Style.sp(8) : 0
+            Layout.preferredHeight: Style.sp(8)
+            Rectangle {
+                anchors.fill: parent
+                radius: Style.radius
+                color: menuHover.hovered ? Tokens.tint5 : "transparent"
+            }
+            Row {
+                anchors.centerIn: parent
+                spacing: Style.sp(0.75)
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        width: Math.max(2, Style.sp(0.75))
+                        height: width
+                        radius: width / 2
+                        color: menuHover.hovered ? Tokens.ink : Tokens.inkMuted
+                    }
+                }
+            }
+            HoverHandler { id: menuHover }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    var p = menuBtn.mapToItem(null, 0, menuBtn.height);
+                    root.menuRequested(p.x, p.y);
+                }
+            }
         }
     }
 
