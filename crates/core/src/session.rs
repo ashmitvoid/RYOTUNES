@@ -45,12 +45,8 @@ impl AppState {
     async fn apply_login(&self, result: LoginResult) {
         // The host hands back the `.youtube.com` jar as `name=value` pairs; rebuild the Cookie
         // header the cookie path expects (sorted, so it is byte-identical to the old flow).
-        let header = result
-            .cookies
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join("; ");
+        let header =
+            result.cookies.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("; ");
         match self.apply_cookie(header).await {
             Ok(SignInOutcome::Complete) => self.emit("login-done", ()),
             // The authenticated cookie is saved, but the account stays deliberately unfinished

@@ -11,11 +11,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::host::EventSink;
 use futures_util::{SinkExt, StreamExt};
 use listen_protocol::{
     ClientMessage, Playback, PlaybackKind, RoomState, ServerMessage, Suggestion, Track, User,
 };
-use crate::host::EventSink;
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::Message;
 

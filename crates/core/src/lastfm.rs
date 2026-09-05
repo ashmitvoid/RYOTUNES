@@ -106,11 +106,13 @@ impl LastfmHandle {
     }
 }
 
-/// Spawn the scrobbler task. `session_key` is the persisted login; `None` parks the task until
-/// the user connects.
-pub fn spawn(session_key: Option<String>) -> LastfmHandle {
+/// Spawn the scrobbler task on `rt`. `session_key` is the persisted login; `None` parks the task
+/// until the user connects. Takes the runtime handle explicitly because the host calls this from
+/// its synchronous setup (Tauri's `setup` closure runs on the main thread, outside any Tokio
+/// context), where `tokio::spawn` would panic with "no reactor running".
+pub fn spawn(rt: &tokio::runtime::Handle, session_key: Option<String>) -> LastfmHandle {
     let (tx, mut rx) = unbounded_channel::<Msg>();
-    tokio::spawn(async move {
+    rt.spawn(async move {
         let mut s = Scrobbler::new(session_key);
         while let Some(msg) = rx.recv().await {
             s.apply(msg).await;
@@ -276,12 +278,7 @@ fn sign(params: &[(String, String)]) -> String {
 
 // --- auth flow (connect / disconnect / status) ----------------------------------------------
 
-fn emit_state(
-    sink: &dyn EventSink,
-    connected: bool,
-    username: Option<&str>,
-    error: Option<&str>,
-) {
+fn emit_state(sink: &dyn EventSink, connected: bool, username: Option<&str>, error: Option<&str>) {
     sink.emit(
         "lastfm-state",
         serde_json::json!({
@@ -340,12 +337,22 @@ pub async fn connect(state: Arc<AppState>) -> Result<(), String> {
                 }
                 Err(e) if e.retryable() => continue, // not approved yet (or transient) — keep polling
                 Err(e) => {
-                    emit_state(state.sink.as_ref(), false, None, Some(&format!("Last.fm: {}", e.message)));
+                    emit_state(
+                        state.sink.as_ref(),
+                        false,
+                        None,
+                        Some(&format!("Last.fm: {}", e.message)),
+                    );
                     return;
                 }
             }
         }
-        emit_state(state.sink.as_ref(), false, None, Some("Last.fm authorization timed out — try again"));
+        emit_state(
+            state.sink.as_ref(),
+            false,
+            None,
+            Some("Last.fm authorization timed out — try again"),
+        );
     });
     Ok(())
 }
@@ -443,5 +450,17 @@ mod tests {
         // Unknown duration: only the 4-minute rule applies.
         assert!(!crosses_threshold(120.0, 0.0));
         assert!(crosses_threshold(240.0, 0.0));
+    }
+
+    /// The host spawns the scrobbler from a synchronous setup closure on a thread with no
+    /// ambient Tokio context; the explicit handle is what keeps that from panicking.
+    #[test]
+    fn spawns_from_outside_the_runtime() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let handle = rt.handle().clone();
+        let spawned = std::thread::spawn(move || spawn(&handle, None))
+            .join()
+            .expect("spawn must not panic off-runtime");
+        drop(spawned);
     }
 }

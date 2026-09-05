@@ -276,9 +276,7 @@ impl CipherDeobfuscator {
             }
             inner.last_used = None;
         }
-        let bridge = self.js.create(CIPHER_LABEL, HARNESS, "")
-            .await
-            .map_err(|e| e.to_string())?;
+        let bridge = self.js.create(CIPHER_LABEL, HARNESS, "").await.map_err(|e| e.to_string())?;
         if let Err(e) = Self::load_player(&*bridge, &injected).await {
             bridge.destroy(); // don't orphan the hidden window on a failed load
             return Err(e);

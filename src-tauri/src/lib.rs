@@ -17,11 +17,11 @@ use std::time::Duration;
 
 use innertube::{Clients, InnerTube, Locale, Session};
 use player::{Player, PlayerEvent};
-use tauri::{Emitter, Manager};
 use ryotunes_core::{
-    cipher, db, discord, lastfm, listentogether, local, lyrics, media, orchestrator,
-    potoken, radio, state,
+    cipher, db, discord, lastfm, listentogether, local, lyrics, media, orchestrator, potoken,
+    radio, state,
 };
+use tauri::{Emitter, Manager};
 
 use cipher::{CipherDeobfuscator, PlayerConfigStore};
 use db::Db;
@@ -292,8 +292,12 @@ pub fn run() {
             );
 
             // Last.fm scrobbler — parks until a session key exists (titlebar connect flow).
-            let lastfm =
-                lastfm::spawn(db.get_setting("lastfm_session_key").filter(|s| !s.is_empty()));
+            // `setup` runs on the main thread, outside any Tokio context, so hand the core
+            // Tauri's runtime handle instead of relying on the ambient one.
+            let lastfm = lastfm::spawn(
+                tauri::async_runtime::handle().inner(),
+                db.get_setting("lastfm_session_key").filter(|s| !s.is_empty()),
+            );
 
             // Listen Together session (session protocol). Server URL is a DB setting so "home PC → VPS" is
             // config, not a rebuild. The sync channel feeds the guest-playback bridge below.

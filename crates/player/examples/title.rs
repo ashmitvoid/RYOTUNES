@@ -19,7 +19,9 @@ fn main() {
     for _ in 0..40 {
         std::thread::sleep(std::time::Duration::from_millis(100));
         got = p.media_title().unwrap_or_default();
-        if !got.is_empty() { break; }
+        if !got.is_empty() {
+            break;
+        }
     }
     println!("want: {title}");
     println!("got:  {got}");
