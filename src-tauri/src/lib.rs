@@ -103,6 +103,7 @@ fn tune_webview(win: &tauri::WebviewWindow) {
             settings.set_enable_webrtc(false);
             settings.set_enable_webgl(false);
             settings.set_enable_html5_database(false); // WebSQL. localStorage is a separate switch.
+            webkit_features::apply_from_env(&settings);
         }
     });
     match res {
@@ -110,6 +111,87 @@ fn tune_webview(win: &tauri::WebviewWindow) {
             tracing::info!(label, "webkit: audio-only, minimal document cache, media + page cache + webgl off; default UI compositor")
         }
         Err(e) => tracing::warn!(label, error = %e, "webkit tuning failed (continuing)"),
+    }
+}
+
+/// `RYOTUNES_WEBKIT_FEATURES=Name=1,Other=0` flips WebKitGTK feature flags on the app's webviews
+/// (the 2.42 feature API, which the `webkit2gtk` crate does not bind yet). A developer knob for
+/// profiling the renderer: `CompositingBordersVisible=1,CompositingRepaintCountersVisible=1` draws
+/// layer borders and per-layer repaint counters, which is how to see what a scroll repaints.
+/// Unknown names are logged and skipped; the variable is normally unset.
+#[cfg(target_os = "linux")]
+mod webkit_features {
+    use std::ffi::CStr;
+    use std::os::raw::c_char;
+
+    use webkit2gtk::glib::translate::ToGlibPtr;
+
+    #[repr(C)]
+    pub struct WebKitFeatureList {
+        _private: [u8; 0],
+    }
+    #[repr(C)]
+    pub struct WebKitFeature {
+        _private: [u8; 0],
+    }
+    extern "C" {
+        fn webkit_settings_get_all_features() -> *mut WebKitFeatureList;
+        fn webkit_feature_list_get_length(list: *mut WebKitFeatureList) -> usize;
+        fn webkit_feature_list_get(
+            list: *mut WebKitFeatureList,
+            index: usize,
+        ) -> *mut WebKitFeature;
+        fn webkit_feature_list_unref(list: *mut WebKitFeatureList);
+        fn webkit_feature_get_identifier(feature: *mut WebKitFeature) -> *const c_char;
+        fn webkit_settings_set_feature_enabled(
+            settings: *mut webkit2gtk::ffi::WebKitSettings,
+            feature: *mut WebKitFeature,
+            enabled: webkit2gtk::glib::ffi::gboolean,
+        );
+    }
+
+    pub fn apply_from_env(settings: &webkit2gtk::Settings) {
+        let Ok(spec) = std::env::var("RYOTUNES_WEBKIT_FEATURES") else { return };
+        let wanted: Vec<(&str, bool)> = spec
+            .split(',')
+            .filter_map(|kv| kv.split_once('='))
+            .map(|(k, v)| (k.trim(), matches!(v.trim(), "1" | "true" | "on")))
+            .collect();
+        if wanted.is_empty() {
+            return;
+        }
+        // Safe: the list is owned for the duration of the loop and unref'd once; every pointer
+        // handed out by `webkit_feature_list_get` is borrowed from it. `settings` outlives the call.
+        unsafe {
+            let list = webkit_settings_get_all_features();
+            let len = webkit_feature_list_get_length(list);
+            let mut applied = Vec::new();
+            for i in 0..len {
+                let feature = webkit_feature_list_get(list, i);
+                let id = CStr::from_ptr(webkit_feature_get_identifier(feature)).to_string_lossy();
+                if let Some((_, on)) = wanted.iter().find(|(k, _)| *k == id) {
+                    webkit_settings_set_feature_enabled(
+                        settings.to_glib_none().0,
+                        feature,
+                        (*on).into(),
+                    );
+                    applied.push(format!("{id}={}", *on as u8));
+                }
+            }
+            webkit_feature_list_unref(list);
+            for (k, _) in &wanted {
+                if !applied.iter().any(|a| a.starts_with(&format!("{k}="))) {
+                    tracing::warn!(
+                        feature = *k,
+                        "RYOTUNES_WEBKIT_FEATURES: unknown WebKit feature"
+                    );
+                }
+            }
+            tracing::info!(
+                features = applied.join(","),
+                "webkit: feature flags from RYOTUNES_WEBKIT_FEATURES"
+            );
+        }
     }
 }
 
