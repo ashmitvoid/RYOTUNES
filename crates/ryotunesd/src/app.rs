@@ -21,6 +21,7 @@ use ryotunes_core::{discord, lastfm, media};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use crate::lifecycle::Lifecycle;
 use crate::methods::normalize_proxy_setting;
 use crate::sink::SocketSink;
 
@@ -236,25 +237,26 @@ pub fn build(
 /// Spawn the three drains that feed `AppState`: the mpv event pump, the OS media-control drain, and
 /// the Listen Together sync bridge. Ports `src-tauri/src/lib.rs` `spawn_event_pump` and the two
 /// `setup` drains, with `has_ui()` replaced by "any connection subscribed" and the Tauri-only tray
-/// / idle-exit calls dropped (Task 5 lifecycle owns them).
+/// / idle-exit calls routed into Task 5's [`Lifecycle`] and [`crate::tray`] instead.
 pub fn spawn_pumps(
     state: Arc<AppState>,
     events: UnboundedReceiver<PlayerEvent>,
     mut media_rx: UnboundedReceiver<MediaControlEvent>,
     mut lt_rx: UnboundedReceiver<SyncCommand>,
     sink: Arc<SocketSink>,
+    lifecycle: Arc<Lifecycle>,
 ) {
-    spawn_event_pump(state.clone(), events, sink);
+    spawn_event_pump(state.clone(), events, sink, lifecycle.clone());
 
     {
         let st = state.clone();
+        let lifecycle = lifecycle.clone();
         tokio::spawn(async move {
             while let Some(ev) = media_rx.recv().await {
-                handle_media_event(&st, ev).await;
+                handle_media_event(&st, ev, &lifecycle).await;
             }
         });
     }
-
     {
         let st = state;
         tokio::spawn(async move {
@@ -269,6 +271,7 @@ fn spawn_event_pump(
     state: Arc<AppState>,
     mut events: UnboundedReceiver<PlayerEvent>,
     sink: Arc<SocketSink>,
+    lifecycle: Arc<Lifecycle>,
 ) {
     tokio::spawn(async move {
         let mut throttle = PositionThrottle::new();
@@ -316,6 +319,10 @@ fn spawn_event_pump(
                     }
                     state.media_set_playing(playing);
                     state.lt_on_play_state(playing).await;
+                    // Task 5: keep the tray label and idle-exit deadline in step with playback,
+                    // where the Tauri host called `tray::set_playing` / `schedule_idle_exit`.
+                    crate::tray::set_playing(playing);
+                    lifecycle.playing_changed(playing);
                 }
                 PlayerEvent::TrackEnded => {
                     state.on_track_ended().await;
@@ -338,8 +345,13 @@ fn spawn_event_pump(
 }
 
 /// Route an OS media-control press into the same `AppState` methods the socket commands use. Ports
-/// `src-tauri/src/lib.rs` `handle_media_event`; the Tauri Stop-arm idle-exit scheduling is Task 5.
-async fn handle_media_event(state: &Arc<AppState>, event: MediaControlEvent) {
+/// `src-tauri/src/lib.rs` `handle_media_event`; the Tauri Stop-arm idle-exit scheduling is now the
+/// [`Lifecycle`] call below.
+async fn handle_media_event(
+    state: &Arc<AppState>,
+    event: MediaControlEvent,
+    lifecycle: &Arc<Lifecycle>,
+) {
     match event {
         MediaControlEvent::Play => state.resume().await,
         MediaControlEvent::Toggle => state.resume_or_toggle().await,
@@ -349,6 +361,7 @@ async fn handle_media_event(state: &Arc<AppState>, event: MediaControlEvent) {
         MediaControlEvent::Stop => {
             let _ = state.player.stop();
             state.media_set_playing(false);
+            lifecycle.playing_changed(false);
         }
         MediaControlEvent::Next => state.next_in_queue().await,
         MediaControlEvent::Previous => state.prev_in_queue().await,

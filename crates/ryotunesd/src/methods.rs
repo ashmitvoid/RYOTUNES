@@ -75,6 +75,11 @@ impl Dispatch for Methods {
                 st.sign_in().await;
                 null()
             }
+            "show" => {
+                // Raise a subscribed client's window, or launch the client when none is listening.
+                crate::tray::show(&conn.sink);
+                null()
+            }
 
             // --- search ----------------------------------------------------------------------
             "search" => ok(st.search(&arg::<String>(&params, "query")?).await.map_err(err)?),

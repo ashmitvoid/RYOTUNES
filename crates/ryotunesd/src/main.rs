@@ -1,12 +1,16 @@
 mod app;
 mod gtk_thread;
 mod js;
+mod lifecycle;
 mod login;
 mod methods;
 mod server;
 mod sink;
+mod tray;
 
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::io::AsRawFd;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -18,8 +22,11 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let path = ryotunes_protocol::socket_path();
-    // Task 5 replaces this bare flock with the single-instance show-and-exit handshake.
-    let lock = hold_lock(&path)?;
+    // Single instance: hold the lock and run, or hand a `show` to the incumbent and exit 0.
+    let lock = match acquire_or_show(&path)? {
+        Some(lock) => lock,
+        None => return Ok(()),
+    };
 
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let gtk = gtk_thread::Gtk::start();
@@ -29,12 +36,17 @@ fn main() -> anyhow::Result<()> {
         Arc::new(login::GtkLogin::new(gtk.clone()));
 
     rt.block_on(async {
+        let (quit_tx, mut quit_rx) = tokio::sync::mpsc::unbounded_channel();
+        // The idle-exit lifecycle arms itself immediately: an activated daemon with no subscriber
+        // and nothing playing must not linger past the grace.
+        let lifecycle = lifecycle::Lifecycle::new(quit_tx.clone());
+
         let (state, events, media_rx, lt_rx) =
             app::build(app::paths(), sink.clone(), js, login, &tokio::runtime::Handle::current())?;
-        app::spawn_pumps(state.clone(), events, media_rx, lt_rx, sink.clone());
+        app::spawn_pumps(state.clone(), events, media_rx, lt_rx, sink.clone(), lifecycle.clone());
+        tray::spawn(state.clone(), quit_tx.clone(), sink.clone());
 
-        let (quit_tx, mut quit_rx) = tokio::sync::mpsc::unbounded_channel();
-        let server = server::Server::bind(&path, sink.clone())?;
+        let server = server::Server::bind(&path, sink.clone(), lifecycle)?;
         let methods = Arc::new(methods::Methods { state: state.clone(), quit: quit_tx });
         tokio::select! {
             _ = server.run(methods) => {}
@@ -48,23 +60,49 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     drop(lock);
-    let _ = std::fs::remove_file(&path);
+    // systemd owns the socket file for an activated instance; only a self-bound socket is ours to
+    // remove.
+    if !server::socket_activated() {
+        let _ = std::fs::remove_file(&path);
+    }
     Ok(())
 }
 
-/// Hold `ryotunesd.sock.lock` under `flock(LOCK_EX | LOCK_NB)` for the process lifetime, so a second
-/// daemon cannot fight this one over the shared SQLite/mpv state. The returned handle keeps the
-/// advisory lock; dropping it (at exit) releases it.
-fn hold_lock(path: &Path) -> anyhow::Result<std::fs::File> {
+/// Single-instance handshake, mirroring `tauri-plugin-single-instance`: hold `ryotunesd.sock.lock`
+/// under `flock(LOCK_EX | LOCK_NB)` for the process lifetime, so a second daemon cannot fight this
+/// one over the shared SQLite/mpv state. `Some(lock)` — we are the instance, keep the handle open.
+/// `None` — an incumbent holds the lock; we asked it to `show`, printed its reply, and should exit 0.
+fn acquire_or_show(path: &Path) -> anyhow::Result<Option<std::fs::File>> {
     let dir = path.parent().expect("socket path has a parent");
     std::fs::create_dir_all(dir)?;
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
     let lock_path = dir.join("ryotunesd.sock.lock");
     let file =
         std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path)?;
     // Safe: a plain advisory-lock syscall on a fd we own.
     let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    if rc != 0 {
-        anyhow::bail!("another ryotunesd already holds {}", lock_path.display());
+    if rc == 0 {
+        return Ok(Some(file));
     }
-    Ok(file)
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() != Some(libc::EWOULDBLOCK) {
+        return Err(anyhow::anyhow!("locking {}: {err}", lock_path.display()));
+    }
+    // Another ryotunesd is live: a second launch means "show the window" (or launch the client).
+    match forward_show(path) {
+        Ok(response) => println!("{response}"),
+        Err(e) => eprintln!("ryotunesd already running; `show` request failed: {e}"),
+    }
+    Ok(None)
+}
+
+/// Connect to the incumbent's socket, request `show`, and return its one-line response.
+fn forward_show(path: &Path) -> std::io::Result<String> {
+    let mut stream = UnixStream::connect(path)?;
+    stream.write_all(b"{\"id\":1,\"method\":\"show\"}\n")?;
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    Ok(line.trim_end().to_string())
 }

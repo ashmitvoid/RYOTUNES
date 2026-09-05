@@ -2,7 +2,9 @@
 //! and events multiplexed through a per-connection writer task.
 
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::io::FromRawFd;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use ryotunes_protocol::{ErrorBody, Incoming, Outgoing, Request, Response};
@@ -11,6 +13,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
+use crate::lifecycle::Lifecycle;
 use crate::sink::SocketSink;
 
 #[async_trait::async_trait]
@@ -27,24 +30,45 @@ pub trait Dispatch: Send + Sync + 'static {
 pub struct Connection {
     pub tx: mpsc::UnboundedSender<String>,
     pub sink: Arc<SocketSink>,
+    lifecycle: Arc<Lifecycle>,
+    /// Set once so a connection counts as at most one subscriber for the idle-exit lifecycle, and so
+    /// the disconnect in [`handle`] only reports a departure for a connection that actually joined.
+    subscribed: AtomicBool,
 }
 
 impl Connection {
-    /// `subscribe`: from now on every event reaches this connection.
+    /// `subscribe`: from now on every event reaches this connection, and the idle-exit deadline is
+    /// cancelled while it stays connected. Idempotent — a second `subscribe` on one connection is a
+    /// no-op rather than a double count.
     pub fn subscribe(&self) {
+        if self.subscribed.swap(true, Ordering::AcqRel) {
+            return;
+        }
         self.sink.subscribe(self.tx.clone());
+        self.lifecycle.client_connected();
     }
 }
 
 pub struct Server {
     listener: UnixListener,
     sink: Arc<SocketSink>,
+    lifecycle: Arc<Lifecycle>,
 }
 
 impl Server {
-    /// Bind with the directory at 0700 and the socket at 0700 (a socket's base mode is 0777, so
-    /// under umask 077 it lands owner-only, 0700).
-    pub fn bind(path: &Path, sink: Arc<SocketSink>) -> std::io::Result<Server> {
+    /// Adopt the systemd socket when socket-activated, otherwise bind the path with the directory at
+    /// 0700 and the socket at 0700 (a socket's base mode is 0777, so under umask 077 it lands
+    /// owner-only, 0700).
+    pub fn bind(
+        path: &Path,
+        sink: Arc<SocketSink>,
+        lifecycle: Arc<Lifecycle>,
+    ) -> std::io::Result<Server> {
+        if let Some(listener) = systemd_listener()? {
+            // systemd already created the socket and directory with the unit's SocketMode/
+            // DirectoryMode; adopt its fd instead of binding a second one.
+            return Ok(Server { listener, sink, lifecycle });
+        }
         let dir = path.parent().expect("socket path has a parent");
         std::fs::create_dir_all(dir)?;
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
@@ -54,14 +78,19 @@ impl Server {
         let old = unsafe { libc::umask(0o077) };
         let listener = UnixListener::bind(path);
         unsafe { libc::umask(old) };
-        Ok(Server { listener: listener?, sink })
+        Ok(Server { listener: listener?, sink, lifecycle })
     }
 
     pub async fn run(self, dispatch: Arc<dyn Dispatch>) {
         loop {
             match self.listener.accept().await {
                 Ok((stream, _)) => {
-                    tokio::spawn(handle(stream, dispatch.clone(), self.sink.clone()));
+                    tokio::spawn(handle(
+                        stream,
+                        dispatch.clone(),
+                        self.sink.clone(),
+                        self.lifecycle.clone(),
+                    ));
                 }
                 Err(e) => tracing::warn!(error = %e, "accept failed"),
             }
@@ -69,7 +98,32 @@ impl Server {
     }
 }
 
-async fn handle(stream: UnixStream, dispatch: Arc<dyn Dispatch>, sink: Arc<SocketSink>) {
+/// True when started by systemd socket activation: `LISTEN_FDS >= 1` and `LISTEN_PID` names this
+/// process. Both [`Server::bind`] (to adopt the fd) and `main` (to leave the systemd-owned socket
+/// file in place on exit) ask this.
+pub fn socket_activated() -> bool {
+    let fds = std::env::var("LISTEN_FDS").ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+    let pid = std::env::var("LISTEN_PID").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    fds >= 1 && pid == std::process::id()
+}
+
+/// The passed-in listener at `SD_LISTEN_FDS_START` (fd 3) when socket-activated, else `None`.
+fn systemd_listener() -> std::io::Result<Option<UnixListener>> {
+    if !socket_activated() {
+        return Ok(None);
+    }
+    // Safe: fd 3 is the single socket systemd created and passed for us to own.
+    let std_listener = unsafe { std::os::unix::net::UnixListener::from_raw_fd(3) };
+    std_listener.set_nonblocking(true)?;
+    Ok(Some(UnixListener::from_std(std_listener)?))
+}
+
+async fn handle(
+    stream: UnixStream,
+    dispatch: Arc<dyn Dispatch>,
+    sink: Arc<SocketSink>,
+    lifecycle: Arc<Lifecycle>,
+) {
     let (rd, mut wr) = stream.into_split();
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     let writer = tokio::spawn(async move {
@@ -79,7 +133,12 @@ async fn handle(stream: UnixStream, dispatch: Arc<dyn Dispatch>, sink: Arc<Socke
             }
         }
     });
-    let conn = Arc::new(Connection { tx: tx.clone(), sink });
+    let conn = Arc::new(Connection {
+        tx: tx.clone(),
+        sink,
+        lifecycle: lifecycle.clone(),
+        subscribed: AtomicBool::new(false),
+    });
     let mut lines = BufReader::new(rd).lines();
     while let Ok(Some(line)) = lines.next_line().await {
         let req = match serde_json::from_str::<Incoming>(&line) {
@@ -102,6 +161,10 @@ async fn handle(stream: UnixStream, dispatch: Arc<dyn Dispatch>, sink: Arc<Socke
             };
             let _ = tx.send(Outgoing::Response(resp).to_line());
         });
+    }
+    // The client is gone: if it had subscribed, its departure may re-arm the idle-exit deadline.
+    if conn.subscribed.load(Ordering::Acquire) {
+        lifecycle.client_gone();
     }
     drop(tx);
     let _ = writer.await;
@@ -137,7 +200,9 @@ mod tests {
         let dir = tempfile_dir();
         let path = dir.join("ryotunesd.sock");
         let sink = Arc::new(SocketSink::default());
-        let server = Server::bind(&path, sink.clone()).unwrap();
+        let (quit_tx, _quit_rx) = mpsc::unbounded_channel();
+        let lifecycle = Lifecycle::new(quit_tx);
+        let server = Server::bind(&path, sink.clone(), lifecycle).unwrap();
         tokio::spawn(server.run(Arc::new(Echo)));
 
         let stream = UnixStream::connect(&path).await.unwrap();

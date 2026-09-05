@@ -3969,6 +3969,7 @@ dependencies = [
  "gtk",
  "innertube",
  "javascriptcore-rs",
+ "ksni",
  "libc",
  "player",
  "ryotunes-core",
