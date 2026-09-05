@@ -3460,7 +3460,10 @@ fn validate_personal_blob(blob: &serde_json::Value) -> Result<String, String> {
     }
     let json = serde_json::to_string(blob).map_err(|e| e.to_string())?;
     if json.len() > MAX_PERSONAL_BYTES {
-        return Err(format!("personal store too large: {} bytes (max {MAX_PERSONAL_BYTES})", json.len()));
+        return Err(format!(
+            "personal store too large: {} bytes (max {MAX_PERSONAL_BYTES})",
+            json.len()
+        ));
     }
     Ok(json)
 }
