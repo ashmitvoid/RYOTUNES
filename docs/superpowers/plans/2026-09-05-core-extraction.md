@@ -253,28 +253,27 @@ git commit -m "core: add the ryotunes-core crate with the host traits"
 
 ---
 
-### Task 2: Move the Tauri-free modules
+### Task 2: Move the leaf modules
 
 **Files:**
-- Move (`git mv`): `src-tauri/src/db.rs`, `src-tauri/src/http.rs`, `src-tauri/src/radio.rs`, `src-tauri/src/lyrics.rs`, `src-tauri/src/discord.rs` to `crates/core/src/`
-- Modify: `crates/core/src/lib.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/commands.rs`, `src-tauri/src/state.rs`
+- Move (`git mv`): `src-tauri/src/db.rs`, `src-tauri/src/http.rs` to `crates/core/src/`
+- Modify: `crates/core/src/lib.rs`, `src-tauri/src/lib.rs`, `src-tauri/Cargo.toml`
 
 **Interfaces:**
-- Produces: `ryotunes_core::{db, http, radio, lyrics, discord}` with the same `pub` items the host used via `crate::db` etc.
+- Produces: `ryotunes_core::{db, http}` with the same `pub` items the host used via `crate::db` / `crate::http`.
 
-- [ ] **Step 1: Confirm the modules are Tauri-free**
+Only these two are leaves. `radio.rs` imports `crate::orchestrator::PlaybackData`, `lyrics.rs` takes `&AppState`, and `lyrics.rs`/`discord.rs` call `crate::local::is_local_song`; those three ride with the modules they depend on (`local` in Task 4, `orchestrator`/`state` in Task 5). Core can never depend on the host, so a module moves only once everything it imports is already in core.
 
-Run: `grep -n 'tauri\|AppHandle' src-tauri/src/db.rs src-tauri/src/http.rs src-tauri/src/radio.rs src-tauri/src/lyrics.rs src-tauri/src/discord.rs`
-Expected: no output (verified 2026-09-05; if a line appears, stop and treat that module in Task 4).
+- [ ] **Step 1: Confirm the two modules import nothing from the host**
+
+Run: `grep -n 'tauri\|AppHandle\|crate::' src-tauri/src/db.rs src-tauri/src/http.rs`
+Expected: no `tauri`/`AppHandle` hits and no `crate::` path outside `crate::db`/`crate::http` themselves.
 
 - [ ] **Step 2: Move them and declare them**
 
 ```bash
 git mv src-tauri/src/db.rs crates/core/src/db.rs
 git mv src-tauri/src/http.rs crates/core/src/http.rs
-git mv src-tauri/src/radio.rs crates/core/src/radio.rs
-git mv src-tauri/src/lyrics.rs crates/core/src/lyrics.rs
-git mv src-tauri/src/discord.rs crates/core/src/discord.rs
 ```
 
 `crates/core/src/lib.rs`:
@@ -283,30 +282,27 @@ git mv src-tauri/src/discord.rs crates/core/src/discord.rs
 pub mod host;
 
 pub mod db;
-pub mod discord;
 pub mod http;
-pub mod lyrics;
-pub mod radio;
 ```
 
-In `src-tauri/src/lib.rs` delete `mod db; mod discord; mod http; mod lyrics; mod radio;` and add:
+In `src-tauri/src/lib.rs` delete `mod db; mod http;` and add:
 
 ```rust
-use ryotunes_core::{db, discord, http, lyrics, radio};
+use ryotunes_core::{db, http};
 ```
 
-In `src-tauri/Cargo.toml` add `ryotunes-core = { workspace = true }` under `[dependencies]`. Any `crate::db::`/`crate::lyrics::` path inside the moved files that pointed at each other becomes `crate::` inside core (they moved together) and `ryotunes_core::` in the host; `pub(crate)` items the host uses become `pub`.
+In `src-tauri/Cargo.toml` add `ryotunes-core = { workspace = true }` under `[dependencies]`. `pub(crate)` items the host uses become `pub`.
 
 - [ ] **Step 3: Build and test**
 
 Run: `cargo check --workspace --locked && cargo test --workspace --locked`
-Expected: both green; the `db`, `lyrics`, `radio` unit tests now run from `ryotunes-core`.
+Expected: both green; the `db` unit tests now run from `ryotunes-core`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add -A crates/core src-tauri/src src-tauri/Cargo.toml
-git commit -m "core: move db, http, radio, lyrics and discord out of the host"
+git commit -m "core: move db and http out of the host"
 ```
 
 ---
@@ -601,16 +597,16 @@ git commit -m "core: move media, lastfm, local and listen together behind EventS
 
 ---
 
-### Task 5: Move `orchestrator.rs`, `state.rs` and the session logic
+### Task 5: Move `orchestrator.rs`, `state.rs`, their dependants and the session logic
 
 **Files:**
-- Move: `src-tauri/src/orchestrator.rs`, `src-tauri/src/state.rs` to `crates/core/src/`
+- Move: `src-tauri/src/orchestrator.rs`, `src-tauri/src/state.rs`, `src-tauri/src/radio.rs`, `src-tauri/src/lyrics.rs`, `src-tauri/src/discord.rs` to `crates/core/src/` (the last three were deferred from Task 2: `radio` imports `orchestrator::PlaybackData`, `lyrics` takes `&AppState`, `lyrics`/`discord` call `local::is_local_song`, which Task 4 put in core)
 - Split: `src-tauri/src/session.rs` into `crates/core/src/session.rs` (cookie/account bookkeeping, `allowed_login_navigation` and its tests) and `src-tauri/src/login_webview.rs` (the visible Google login window, implementing `LoginFlow`)
 - Modify: `src-tauri/src/lib.rs`, `src-tauri/src/commands.rs`
 
 **Interfaces:**
 - Consumes: everything above.
-- Produces: `ryotunes_core::state::AppState::new(it, clients, player, db, sink: Arc<dyn EventSink>, login: Arc<dyn LoginFlow>, paths: Paths, orchestrator, lt, media, discord, lastfm)`; `AppState::sign_in(self: &Arc<Self>)` which awaits `self.login.sign_in()` and then runs today's cookie-application code; `AppState::emit(&self, event, payload)` replacing every `self.app.emit`.
+- Produces: `ryotunes_core::state::AppState::new(it, clients, player, db, sink: Arc<dyn EventSink>, login: Arc<dyn LoginFlow>, paths: Paths, orchestrator, lt, media, discord, lastfm)`; `AppState::sign_in(self: &Arc<Self>)` which awaits `self.login.sign_in()` and then runs today's cookie-application code; `AppState::emit(&self, event, payload)` replacing every `self.app.emit`; `ryotunes_core::{radio, lyrics, discord}` with their existing `pub` items.
 
 - [ ] **Step 1: Move and let the compiler list the edits**
 
@@ -618,10 +614,13 @@ git commit -m "core: move media, lastfm, local and listen together behind EventS
 git mv src-tauri/src/orchestrator.rs crates/core/src/orchestrator.rs
 git mv src-tauri/src/state.rs crates/core/src/state.rs
 git mv src-tauri/src/session.rs crates/core/src/session.rs
+git mv src-tauri/src/radio.rs crates/core/src/radio.rs
+git mv src-tauri/src/lyrics.rs crates/core/src/lyrics.rs
+git mv src-tauri/src/discord.rs crates/core/src/discord.rs
 ```
 
-Add `pub mod orchestrator; pub mod state; pub mod session;` to core's `lib.rs`. Run `cargo check -p ryotunes-core`.
-Expected: errors only at `state.rs:15,54,328` (`AppHandle`), the ten `self.app.emit(...)` sites, the two `tauri::async_runtime::spawn` sites (`state.rs:820,1314`), and `session.rs:13-15` plus `open_login`.
+Add `pub mod orchestrator; pub mod state; pub mod session; pub mod radio; pub mod lyrics; pub mod discord;` to core's `lib.rs` and replace `mod ...;` with `use ryotunes_core::{...};` in the host. Run `cargo check -p ryotunes-core`.
+Expected: errors only at `state.rs:15,54,328` (`AppHandle`), the ten `self.app.emit(...)` sites, the `tauri::async_runtime::spawn` sites in `state.rs` (`820`, `1314`, `1391`, `2066`) and `orchestrator.rs`, and `session.rs:13-15` plus `open_login`. `radio`, `lyrics` and `discord` need no edits beyond their `crate::` paths, which stay valid because their targets moved with them.
 
 - [ ] **Step 2: Replace `app` with `sink` + `login` in `AppState`**
 
