@@ -17,6 +17,7 @@
 		MusicNote01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
+	import { seekReleaseGuard } from '$lib/seek-drag';
 	import {
 		playback,
 		setPlaybackPosition,
@@ -58,20 +59,26 @@
 	});
 
 	let seekDrag = $state<number | null>(null);
+	let seekInput: HTMLInputElement | undefined = $state();
 	const shownPosition = $derived(seekDrag ?? playback.position);
 	const progress = $derived(playback.duration > 0 ? Math.min(100, Math.max(0, shownPosition / playback.duration * 100)) : 0);
+	// A track change ends any drag: the value belonged to the previous track.
+	$effect(() => {
+		void playback.now?.videoId;
+		seekDrag = null;
+	});
 	const fmt = (secs: number) => {
 		if (!Number.isFinite(secs) || secs <= 0) return '0:00';
 		const total = Math.floor(secs);
 		return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 	};
 	function onSeekInput(e: Event) { seekDrag = Number((e.currentTarget as HTMLInputElement).value); }
-	function onSeekCommit(e: Event) {
-		const value = Number((e.currentTarget as HTMLInputElement).value);
+	function commitSeek(value: number) {
 		setPlaybackPosition(value);
 		seekDrag = null;
 		void api.seek(value);
 	}
+	function onSeekCommit(e: Event) { commitSeek(Number((e.currentTarget as HTMLInputElement).value)); }
 
 	let volDragging = $state(false);
 	let justLiked = $state(false);
@@ -133,8 +140,10 @@
 							min="0"
 							max={playback.duration || 0}
 							value={shownPosition}
+							bind:this={seekInput}
 							oninput={onSeekInput}
 							onchange={onSeekCommit}
+							{@attach seekReleaseGuard(() => seekDrag !== null, () => commitSeek(Number(seekInput?.value ?? seekDrag)))}
 							aria-label="Seek"
 						/>
 						<span>{fmt(playback.duration)}</span>
