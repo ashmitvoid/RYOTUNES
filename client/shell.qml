@@ -5,6 +5,7 @@ import Ryoku.Ui.Singletons
 import "mini"
 
 ShellRoot {
+    id: shellRoot
     // Ask for the version handshake, the event stream and its opening snapshot as soon as the
     // config is up. subscribeAll() is idempotent and re-subscribes on every reconnect, so a single
     // call here covers a daemon that is already up, one that starts later, and one that restarts.
@@ -45,8 +46,25 @@ ShellRoot {
         }
     }
 
+    // "Come back" from two directions: the daemon's `show` event (tray Show, a second `ryotunes` /
+    // `ryotunesd` launch, the desktop keybind) and `qs -p ... ipc call window show`. A closed
+    // FloatingWindow is hidden, not destroyed, so this process stays subscribed and the daemon's
+    // show reaches it here rather than spawning a second client.
+    function present(): void {
+        // After a compositor close (Super+Q) the toplevel is gone but Quickshell leaves
+        // `visible` at true, so assigning true again is a no-op; drop it first to remap.
+        win.visible = false;
+        win.visible = true;
+    }
+    Connections {
+        target: Daemon
+        function onEvent(name: string, data: var): void {
+            if (name === "show")
+                shellRoot.present();
+        }
+    }
     IpcHandler {
         target: "window"
-        function show(): void { win.visible = true; }
+        function show(): void { shellRoot.present(); }
     }
 }
