@@ -2,9 +2,7 @@
 
 mod cipher;
 mod commands;
-mod db;
 mod discord;
-mod http;
 mod lastfm;
 mod listentogether;
 mod local;
@@ -29,6 +27,7 @@ use std::time::Duration;
 use innertube::{Clients, InnerTube, Locale, Session};
 use player::{Player, PlayerEvent};
 use tauri::{Emitter, Manager};
+use ryotunes_core::{db, http};
 
 use cipher::{CipherDeobfuscator, PlayerConfigStore};
 use db::Db;
