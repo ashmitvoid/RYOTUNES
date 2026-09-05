@@ -277,3 +277,61 @@ pub(crate) async fn destroy_and_wait(app: &AppHandle, label: &str) {
     }
     tracing::warn!(label, "webview label still present after destroy — create may collide");
 }
+
+use ryotunes_core::host::{JsBridge, JsError, JsSession};
+
+impl From<Error> for JsError {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::Gone(l) => JsError::Gone(l),
+            Error::Eval(m) => JsError::Eval(m),
+            Error::Timeout(d) => JsError::Timeout(d),
+            Error::BadWebview(m) => JsError::BadEnvironment(m),
+            Error::Build(m) => JsError::Build(m),
+        }
+    }
+}
+
+/// The host's `JsBridge`: one hidden Tauri webview per label.
+pub struct TauriJs {
+    pub app: AppHandle,
+}
+
+#[async_trait::async_trait]
+impl JsBridge for TauriJs {
+    async fn create(
+        &self,
+        label: &str,
+        harness_html: &str,
+        init_script: &str,
+    ) -> Result<Box<dyn JsSession>, JsError> {
+        let bridge = Bridge::create(&self.app, label, harness_html, init_script).await?;
+        Ok(Box::new(bridge))
+    }
+
+    async fn reclaim(&self, label: &str) {
+        destroy_and_wait(&self.app, label).await;
+    }
+}
+
+#[async_trait::async_trait]
+impl JsSession for Bridge {
+    fn eval(&self, js: &str) -> Result<(), JsError> {
+        Bridge::eval(self, js).map_err(Into::into)
+    }
+    async fn eval_json(&self, js: String, timeout: Duration) -> Result<Value, JsError> {
+        Bridge::eval_json(self, js, timeout).await.map_err(Into::into)
+    }
+    async fn call_async(&self, expr: &str, timeout: Duration) -> Result<Value, JsError> {
+        Bridge::call_async(self, expr, timeout).await.map_err(Into::into)
+    }
+    fn exists(&self) -> bool {
+        Bridge::exists(self)
+    }
+    fn destroy(&self) {
+        let _ = Bridge::destroy(self);
+    }
+    fn clone_session(&self) -> Box<dyn JsSession> {
+        Box::new(self.clone())
+    }
+}

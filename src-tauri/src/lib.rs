@@ -1,6 +1,5 @@
 //! Ryotunes Tauri app. Wires transport + player + db + orchestrator behind the command boundary.
 
-mod cipher;
 mod commands;
 mod discord;
 mod lastfm;
@@ -11,7 +10,6 @@ mod main_window;
 mod media;
 mod mini;
 mod orchestrator;
-mod potoken;
 mod radio;
 mod ryoku_theme;
 mod session;
@@ -27,7 +25,7 @@ use std::time::Duration;
 use innertube::{Clients, InnerTube, Locale, Session};
 use player::{Player, PlayerEvent};
 use tauri::{Emitter, Manager};
-use ryotunes_core::{db, http};
+use ryotunes_core::{cipher, db, http, potoken};
 
 use cipher::{CipherDeobfuscator, PlayerConfigStore};
 use db::Db;
@@ -265,8 +263,10 @@ pub fn run() {
 
             // Cipher and PoToken helpers run in hidden webviews behind the orchestrator.
             let config = Arc::new(PlayerConfigStore::new(&data_dir));
-            let cipher = Arc::new(CipherDeobfuscator::new(handle.clone(), &data_dir, config));
-            let potoken = Arc::new(PoTokenGenerator::new(handle.clone(), db.clone()));
+            let js: Arc<dyn ryotunes_core::host::JsBridge> =
+                Arc::new(webview::TauriJs { app: handle.clone() });
+            let cipher = Arc::new(CipherDeobfuscator::new(js.clone(), &data_dir, config));
+            let potoken = Arc::new(PoTokenGenerator::new(js.clone(), db.clone()));
             let orchestrator = Arc::new(Orchestrator::new(
                 it.clone(),
                 clients.clone(),

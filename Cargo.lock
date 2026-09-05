@@ -3896,6 +3896,7 @@ name = "ryotunes"
 version = "2.4.1"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "discord-rich-presence",
  "futures-util",

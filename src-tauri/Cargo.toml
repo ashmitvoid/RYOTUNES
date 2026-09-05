@@ -41,6 +41,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 innertube = { path = "../crates/innertube" }
 player = { path = "../crates/player" }
 ryotunes-core = { workspace = true }
+async-trait = { workspace = true }
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }
 # Listen Together protocol and WebSocket transport.
 listen-protocol = { workspace = true }

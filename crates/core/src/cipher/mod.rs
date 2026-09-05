@@ -1,7 +1,7 @@
 //! `CipherDeobfuscator` (cipher runtime) — the signature/`n`-transform runtime the orchestrator calls.
 //!
 //! Ties [`fetcher`] (player.js) + [`extractor`]/[`config`] (function names) + a hidden cipher
-//! webview ([`crate::webview`]) that runs YouTube's own code. Every public method degrades
+//! webview (the host's `webview.rs`) that runs YouTube's own code. Every public method degrades
 //! gracefully: a webview or extraction failure yields `None` / the original URL, and the
 //! orchestrator falls through to the non-cipher fallback clients (stream selection §5).
 
@@ -16,10 +16,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tauri::AppHandle;
 use tokio::sync::Mutex;
 
-use crate::webview::Bridge;
+use crate::host::{JsBridge, JsSession};
 use fetcher::PlayerJsFetcher;
 
 const CIPHER_LABEL: &str = "ryotunes-cipher";
@@ -49,7 +48,7 @@ const DISCOVERY_JS: &str = r#"(function(){
 
 #[derive(Default)]
 struct Inner {
-    bridge: Option<Bridge>,
+    bridge: Option<Box<dyn JsSession>>,
     sts: Option<i32>,
     built_epoch: u64,
     n_available: bool,
@@ -67,19 +66,19 @@ struct Inner {
 }
 
 pub struct CipherDeobfuscator {
-    app: AppHandle,
+    js: Arc<dyn JsBridge>,
     fetcher: PlayerJsFetcher,
     config: Arc<PlayerConfigStore>,
     inner: Mutex<Inner>,
 }
 
 impl CipherDeobfuscator {
-    pub fn new(app: AppHandle, app_data_dir: &Path, config: Arc<PlayerConfigStore>) -> Self {
+    pub fn new(js: Arc<dyn JsBridge>, app_data_dir: &Path, config: Arc<PlayerConfigStore>) -> Self {
         CipherDeobfuscator {
             fetcher: PlayerJsFetcher::new(app_data_dir),
             config,
             inner: Mutex::new(Inner::default()),
-            app,
+            js,
         }
     }
 
@@ -112,7 +111,7 @@ impl CipherDeobfuscator {
             let mut inner = self.inner.lock().await;
             inner.analyzed = false; // force re-fetch + re-analysis
             if let Some(b) = inner.bridge.take() {
-                let _ = b.destroy();
+                b.destroy();
             }
             inner.last_used = None;
         }
@@ -122,7 +121,7 @@ impl CipherDeobfuscator {
     async fn try_deobfuscate(&self, cipher: &str) -> Option<String> {
         self.ensure_analyzed().await.ok()?;
         let (s, sp, base) = parse_cipher(cipher)?;
-        let bridge = self.inner.lock().await.bridge.clone()?;
+        let bridge = self.inner.lock().await.bridge.as_ref().map(|b| b.clone_session())?;
         let js = format!(
             "(function(){{try{{return String(window._cipherSigFunc({}));}}catch(e){{return null;}}}})()",
             js_string(&s)
@@ -150,7 +149,7 @@ impl CipherDeobfuscator {
         if !inner.n_available {
             return None;
         }
-        let bridge = inner.bridge.clone()?;
+        let bridge = inner.bridge.as_ref().map(|b| b.clone_session())?;
         drop(inner);
 
         let re = regex::Regex::new(r"[?&]n=([^&]+)").ok()?;
@@ -179,7 +178,7 @@ impl CipherDeobfuscator {
             let mut inner = self.inner.lock().await;
             inner.analyzed = false; // next ensure_analyzed rebuilds
             if let Some(b) = inner.bridge.take() {
-                let _ = b.destroy();
+                b.destroy();
             }
             inner.last_used = None;
         }
@@ -203,7 +202,7 @@ impl CipherDeobfuscator {
             inner.bridge.is_some() && inner.last_used.is_some_and(|used| used.elapsed() >= idle);
         if expired {
             if let Some(bridge) = inner.bridge.take() {
-                let _ = bridge.destroy();
+                bridge.destroy();
             }
             inner.last_used = None;
             tracing::debug!(?idle, "cipher webview torn down (idle)");
@@ -235,7 +234,7 @@ impl CipherDeobfuscator {
             // Unknown player hash — pull the registries off the hot path; a validated config for it
             // lands on the next rebuild (cipher runtime §forceRefresh). This run can't decipher.
             let config = self.config.clone();
-            tauri::async_runtime::spawn(async move {
+            tokio::spawn(async move {
                 config.force_refresh().await;
             });
         }
@@ -251,7 +250,7 @@ impl CipherDeobfuscator {
         if cfg.is_none() {
             let mut inner = self.inner.lock().await;
             if let Some(b) = inner.bridge.take() {
-                let _ = b.destroy();
+                b.destroy();
             }
             inner.last_used = None;
             inner.sts = sts;
@@ -273,15 +272,15 @@ impl CipherDeobfuscator {
         {
             let mut inner = self.inner.lock().await;
             if let Some(b) = inner.bridge.take() {
-                let _ = b.destroy();
+                b.destroy();
             }
             inner.last_used = None;
         }
-        let bridge = Bridge::create(&self.app, CIPHER_LABEL, HARNESS, "")
+        let bridge = self.js.create(CIPHER_LABEL, HARNESS, "")
             .await
             .map_err(|e| e.to_string())?;
-        if let Err(e) = Self::load_player(&bridge, &injected).await {
-            let _ = bridge.destroy(); // don't orphan the hidden window on a failed load
+        if let Err(e) = Self::load_player(&*bridge, &injected).await {
+            bridge.destroy(); // don't orphan the hidden window on a failed load
             return Err(e);
         }
         let n_available = matches!(
@@ -302,7 +301,7 @@ impl CipherDeobfuscator {
                 "cipher: discovery found no usable sig/n on this player — dropping the webview \
                  (KI-1; rebuilt on config-epoch change or self-heal)"
             );
-            let _ = bridge.destroy();
+            bridge.destroy();
             inner.bridge = None;
             inner.last_used = None;
         }
@@ -317,7 +316,7 @@ impl CipherDeobfuscator {
 
     /// Inject player.js + discovery into a freshly-built cipher `bridge` and wait for discovery to
     /// finish. Split out so `ensure_analyzed` can destroy the webview on any of these failures.
-    async fn load_player(bridge: &Bridge, injected: &str) -> Result<(), String> {
+    async fn load_player(bridge: &dyn JsSession, injected: &str) -> Result<(), String> {
         bridge.eval(injected).map_err(|e| e.to_string())?;
         bridge.eval(DISCOVERY_JS).map_err(|e| e.to_string())?;
         // Wait for discovery to finish, then the caller reads whether n/sig are usable.

@@ -16,13 +16,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tauri::AppHandle;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 
 use crate::db::{now_secs, Db};
 use crate::http::WEB_UA;
-use crate::webview::{Bridge, Error as WebviewError};
+use crate::host::{JsBridge, JsSession, JsError};
 
 const GOOGLE_API_KEY: &str = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw";
 const REQUEST_KEY: &str = "O43z0dpjhgX20SCx4KAo";
@@ -52,7 +51,7 @@ const GLUE: &str = r#"window.__lm={
 struct Minter {
     session_id: String,
     expires_at: Instant,
-    bridge: Bridge,
+    bridge: Box<dyn JsSession>,
     last_used: Instant,
 }
 
@@ -89,7 +88,7 @@ impl SessionToken {
 }
 
 pub struct PoTokenGenerator {
-    app: AppHandle,
+    js: Arc<dyn JsBridge>,
     db: Arc<Db>,
     minter: Mutex<Option<Minter>>,
     /// Session token cache (PoToken flow: minted from visitorData, ~12h TTL). Lives OUTSIDE the
@@ -102,7 +101,7 @@ pub struct PoTokenGenerator {
 }
 
 impl PoTokenGenerator {
-    pub fn new(app: AppHandle, db: Arc<Db>) -> Self {
+    pub fn new(js: Arc<dyn JsBridge>, db: Arc<Db>) -> Self {
         // A token stored by a previous run is as good as one minted now, right up to its expiry.
         // A wrong-session or expired one is simply never returned by `cached_session_token`, so it
         // costs nothing to load it optimistically and let the normal validity check reject it.
@@ -115,7 +114,7 @@ impl PoTokenGenerator {
             );
         }
         PoTokenGenerator {
-            app,
+            js,
             db,
             minter: Mutex::new(None),
             session_token: Mutex::new(stored),
@@ -146,7 +145,7 @@ impl PoTokenGenerator {
             Ok(Ok(_guard)) => self.cached_session_token(visitor_data).await,
             Ok(Err(e)) => {
                 tracing::warn!(error = %e, "PoToken session mint failed — degrading");
-                if matches!(e, MintError::Webview(WebviewError::BadWebview(_))) {
+                if matches!(e, MintError::Webview(JsError::BadEnvironment(_))) {
                     self.webview_bad.store(true, Ordering::SeqCst);
                 }
                 self.teardown().await;
@@ -174,7 +173,7 @@ impl PoTokenGenerator {
             Ok(Ok(pot)) => Some(pot),
             Ok(Err(e)) => {
                 tracing::warn!(video_id, error = %e, "PoToken streaming mint failed — degrading");
-                if matches!(e, MintError::Webview(WebviewError::BadWebview(_))) {
+                if matches!(e, MintError::Webview(JsError::BadEnvironment(_))) {
                     self.webview_bad.store(true, Ordering::SeqCst);
                 }
                 self.teardown().await;
@@ -209,7 +208,7 @@ impl PoTokenGenerator {
         let mut guard = self.minter.lock().await;
         if !guard.as_ref().is_some_and(|m| m.valid_for(visitor_data)) {
             if let Some(old) = guard.take() {
-                let _ = old.bridge.destroy();
+                old.bridge.destroy();
             }
             *guard = Some(self.create_minter(visitor_data).await?);
         }
@@ -225,14 +224,14 @@ impl PoTokenGenerator {
         let mut guard = self.ensure_minter(visitor_data).await?;
         let minter = guard.as_mut().expect("minter present");
         minter.last_used = Instant::now();
-        let bridge = minter.bridge.clone();
-        match mint_token(&bridge, video_id.as_bytes()).await {
+        let bridge = minter.bridge.clone_session();
+        match mint_token(&*bridge, video_id.as_bytes()).await {
             Ok(pot) => Ok(pot),
             Err(e) => {
                 tracing::debug!(error = %e, "per-video mint failed, rebuilding minter once");
-                let _ = bridge.destroy();
+                bridge.destroy();
                 let fresh = self.create_minter(visitor_data).await?;
-                let pot = mint_token(&fresh.bridge, video_id.as_bytes()).await?;
+                let pot = mint_token(&*fresh.bridge, video_id.as_bytes()).await?;
                 *guard = Some(fresh);
                 Ok(pot)
             }
@@ -241,11 +240,11 @@ impl PoTokenGenerator {
 
     /// Full BotGuard bootstrap: Create → runBotGuard → GenerateIT → createMinter → session token.
     async fn create_minter(&self, session_id: &str) -> Result<Minter, MintError> {
-        let bridge = Bridge::create(&self.app, POTOKEN_LABEL, HARNESS, GLUE).await?;
-        match self.bootstrap_minter(&bridge, session_id).await {
+        let bridge = self.js.create(POTOKEN_LABEL, HARNESS, GLUE).await?;
+        match self.bootstrap_minter(&*bridge, session_id).await {
             Ok(m) => Ok(m),
             Err(e) => {
-                let _ = bridge.destroy(); // don't orphan the hidden window on a failed bootstrap
+                bridge.destroy(); // don't orphan the hidden window on a failed bootstrap
                 Err(e)
             }
         }
@@ -255,7 +254,7 @@ impl PoTokenGenerator {
     /// `create_minter` can destroy the webview on any error path.
     async fn bootstrap_minter(
         &self,
-        bridge: &Bridge,
+        bridge: &dyn JsSession,
         session_id: &str,
     ) -> Result<Minter, MintError> {
         // 1. /Create → descrambled challengeData for runBotGuard.
@@ -303,7 +302,7 @@ impl PoTokenGenerator {
         Ok(Minter {
             session_id: session_id.to_owned(),
             expires_at: Instant::now() + good_for,
-            bridge: bridge.clone(),
+            bridge: bridge.clone_session(),
             last_used: Instant::now(),
         })
     }
@@ -351,7 +350,7 @@ impl PoTokenGenerator {
         let mut guard = self.minter.lock().await;
         if let Some(m) = guard.as_ref() {
             if m.last_used.elapsed() >= idle {
-                let _ = m.bridge.destroy();
+                m.bridge.destroy();
                 *guard = None;
                 tracing::debug!("PoToken webview torn down (idle)");
             }
@@ -360,16 +359,16 @@ impl PoTokenGenerator {
 
     async fn teardown(&self) {
         if let Some(m) = self.minter.lock().await.take() {
-            let _ = m.bridge.destroy();
+            m.bridge.destroy();
         }
         // A failed/cancelled create_minter (or a mint timeout that cancelled us mid-bootstrap)
         // leaves an untracked window on our label — reclaim it so no hidden webview is orphaned.
-        crate::webview::destroy_and_wait(&self.app, POTOKEN_LABEL).await;
+        self.js.reclaim(POTOKEN_LABEL).await;
     }
 }
 
 /// [webview] obtain one PoToken for `identifier` (raw UTF-8 bytes) → URL-safe base64.
-async fn mint_token(bridge: &Bridge, identifier: &[u8]) -> Result<String, MintError> {
+async fn mint_token(bridge: &dyn JsSession, identifier: &[u8]) -> Result<String, MintError> {
     let arr = bridge
         .call_async(&format!("__lm.mint({})", jsutil::js_byte_array(identifier)), CALL_TIMEOUT)
         .await?;
@@ -388,7 +387,7 @@ async fn mint_token(bridge: &Bridge, identifier: &[u8]) -> Result<String, MintEr
 #[derive(Debug, thiserror::Error)]
 enum MintError {
     #[error("webview: {0}")]
-    Webview(#[from] WebviewError),
+    Webview(#[from] JsError),
     #[error("http: {0}")]
     Http(#[from] reqwest::Error),
     #[error("parse: {0}")]
