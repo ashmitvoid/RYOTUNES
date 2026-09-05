@@ -323,6 +323,7 @@ git commit -m "client: home page with shelves, shortcuts and artist index"
 - Create: `packaging/linux/ryotunes-qml` (shell script: `exec qs -c ryotunes "$@"`), `packaging/linux/ryotunes-qml.desktop`
 - Modify: `packaging/arch/PKGBUILD` (install `client/` to `/usr/share/ryotunes/client` and symlink `~/.config/quickshell/ryotunes` is NOT used; instead install to `/usr/share/quickshell/ryotunes`? Quickshell resolves `-c NAME` from `$XDG_CONFIG_HOME/quickshell/NAME` only, so install the client to `/usr/share/ryotunes/client` and make the launcher `exec qs -p /usr/share/ryotunes/client "$@"`), `crates/ryotunesd/src/lifecycle.rs` (`show` spawns `ryotunes-qml` when `RYOTUNES_CLIENT=qml`, else `ryotunes`), `docs/INSTALL-ARCH.md`
 - Test: launch via the desktop entry; a second launch raises the window (the daemon's `show` event + the client's `IpcHandler`).
+- Window rule (found in Task 1): Ryoku's shipped rule `ryoku/hyprland/modules/window_rules.lua` `float-ryotunes` matches `class = "^ryotunes$"`, the Tauri app's class; the QML client's class is `org.quickshell`, so it opens tiled. Cutover changes that rule to `match = { title = "^(Ryotunes)$" }` (the exact-title form `scripts/ryoku-window-rule.sh` already installs), which covers both clients and keeps `Ryotunes Mini` independent. Until then, `hl.dsp.window.float` by hand during development.
 
 - [ ] **Step 1: Wire it**, commit `client: launcher, desktop entry and packaging`.
 
