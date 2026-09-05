@@ -3,13 +3,12 @@ import QtQuick
 import QtQuick.Layouts
 import Ryoku.Ui.Singletons
 import "chrome"
-import "pages"
 import "components"
 
 // The app frame: the title register on top, the navigation rail beside the routed page, the
 // transport pinned to the foot while something is loaded, and a foreground layer for the account
-// menu and toasts. The page is chosen from Router.current.page — Home is the only built route; the
-// other nav destinations land on a clearly-marked placeholder until their tasks add them.
+// menu, the toasts and the Ctrl+K palette. The page is chosen from Router.current.page and loaded
+// by URL; Radio/Settings and any unknown route land on a placeholder until their task adds them.
 Item {
     id: app
     anchors.fill: parent
@@ -38,12 +37,28 @@ Item {
 
             Sidebar { Layout.fillHeight: true }
 
-            Loader {
-                id: pageLoader
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                readonly property string page: Router.current ? Router.current.page : "home"
-                sourceComponent: page === "home" ? homePage : placeholder
+
+                // The routed page is loaded by URL from its type name, so a new page lights up the
+                // moment its file lands — no per-route wiring here. Radio/Settings and any unknown
+                // route fall through to the placeholder until their task adds them.
+                Loader {
+                    id: pageLoader
+                    anchors.fill: parent
+                    readonly property string page: Router.current ? Router.current.page : "home"
+                    source: {
+                        var m = { home: "HomePage", search: "SearchPage", library: "LibraryPage",
+                            playlist: "PlaylistPage", album: "AlbumPage", artist: "ArtistPage", list: "ListPage" };
+                        return m[page] ? Qt.resolvedUrl("pages/" + m[page] + ".qml") : "";
+                    }
+                }
+                Loader {
+                    anchors.fill: parent
+                    active: pageLoader.status !== Loader.Ready
+                    sourceComponent: placeholder
+                }
             }
         }
 
@@ -60,7 +75,6 @@ Item {
         }
     }
 
-    Component { id: homePage; HomePage {} }
     Component {
         id: placeholder
         Rectangle {
@@ -95,6 +109,15 @@ Item {
 
     // ── foreground layer ────────────────────────────────────────────────────────────────
     Toast { }
+
+    // The Ctrl+K command palette and its global shortcut. On top of everything, so it can't be
+    // clipped and covers the whole frame while open.
+    CommandPalette { id: palette }
+    Shortcut {
+        sequences: ["Ctrl+K"]
+        context: Qt.WindowShortcut
+        onActivated: palette.open = !palette.open
+    }
 
     // Account menu (sign in / out via the daemon). A full-surface dismiss layer closes it.
     MouseArea {
