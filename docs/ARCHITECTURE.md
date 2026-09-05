@@ -23,6 +23,20 @@ Ryoku / Hyprland
                     └── Mini player
 ```
 
+## Crates and binaries
+
+The workspace separates the playback core from whoever renders it. Phase 1 of the native-client plan moved everything in `src-tauri/src` that is not a window, a webview or a Tauri command into `crates/core`, behind three host traits; the daemon, CLI and QML rows below are the targets later phases add.
+
+| Path | Role | Origin |
+|---|---|---|
+| `crates/innertube`, `crates/player`, `crates/listen-protocol`, `crates/sync-server` | unchanged | existing |
+| `crates/core` | `AppState`, orchestrator, db, lyrics, local, discord, lastfm, media (MPRIS), radio, listentogether, cipher, potoken, session (login), settings. No Tauri. Talks to the outside through three traits (4.2) | moved from `src-tauri/src` |
+| `crates/protocol` | request/response/event types, `serde` only, shared by daemon, CLI, tests | new |
+| `crates/ryotunesd` | binary: socket server, single-instance lock, systemd-friendly lifecycle, GTK thread hosting the hidden WebKitGTK views, tray | new; absorbs `tray.rs`, `webview.rs`, the login part of `session.rs` |
+| `crates/ryotunes-cli` | `ryotunes-cli <method> [json]` and `ryotunes-cli events`; the shell's and scripts' entry point | new |
+| `client/` | the QML client run by Quickshell: `qs -c ryotunes` (shipped as `/usr/share/ryotunes/client`), plus `client/mini/` for the mini player window | new, replaces `ui/` |
+| `src-tauri/` | deleted at the end of phase 4 | removed |
+
 ## Background playback
 
 Closing the main window is not the same operation as quitting the application.

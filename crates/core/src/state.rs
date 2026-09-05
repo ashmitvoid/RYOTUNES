@@ -3447,6 +3447,152 @@ fn persist_fingerprint(q: &QueueState) -> u64 {
     hasher.finish()
 }
 
+/// Thin metadata/browse/player API the host commands forward into. Each body is the logic that
+/// used to live inline in a `#[tauri::command]`, moved here so the host stays a pure adapter.
+impl AppState {
+    fn metadata_client(&self) -> Result<&innertube::YouTubeClient, String> {
+        self.clients.get(innertube::METADATA_CLIENT).ok_or_else(|| "metadata client missing".into())
+    }
+
+    pub async fn search(&self, query: &str) -> Result<Vec<SongItem>, String> {
+        let client = self.metadata_client()?;
+        let result = self.it.search_songs(client, query).await.map_err(|e| e.to_string())?;
+        Ok(result.items)
+    }
+
+    pub async fn search_page(&self, query: &str) -> Result<innertube::SearchResult, String> {
+        let client = self.metadata_client()?;
+        self.it.search_songs(client, query).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn search_page_more(&self, token: &str) -> Result<innertube::SearchResult, String> {
+        let client = self.metadata_client()?;
+        self.it.search_songs_continuation(client, token).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn search_all(&self, query: &str) -> Result<innertube::SearchResults, String> {
+        let client = self.metadata_client()?;
+        self.it.search_all(client, query).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn search_cards(
+        &self,
+        query: &str,
+        category: &str,
+    ) -> Result<Vec<innertube::BrowseItem>, String> {
+        let client = self.metadata_client()?;
+        self.it.search_cards(client, query, category).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn search_cards_page(
+        &self,
+        query: &str,
+        category: &str,
+    ) -> Result<innertube::SearchCardPage, String> {
+        let client = self.metadata_client()?;
+        self.it.search_cards_page(client, query, category).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn search_cards_more(
+        &self,
+        token: &str,
+    ) -> Result<innertube::SearchCardPage, String> {
+        let client = self.metadata_client()?;
+        self.it.search_cards_continuation(client, token).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn search_all_more(&self, token: &str) -> Result<innertube::SearchResults, String> {
+        let client = self.metadata_client()?;
+        self.it.search_all_continuation(client, token).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn home(&self, params: Option<&str>) -> Result<innertube::HomePage, String> {
+        let client = self.metadata_client()?;
+        self.it.home(client, params).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn home_more(&self, token: &str) -> Result<innertube::HomePage, String> {
+        let client = self.metadata_client()?;
+        self.it.home_continuation(client, token).await.map_err(|e| e.to_string())
+    }
+
+    /// Signed out there is no YouTube library grid, and the Library page merges local saves in, so
+    /// "nothing of yours on YouTube" is an empty answer rather than an error.
+    pub async fn library_albums(&self) -> Result<Vec<innertube::BrowseItem>, String> {
+        if !self.it.is_logged_in() {
+            return Ok(Vec::new());
+        }
+        let client = self.metadata_client()?;
+        self.it.library_albums(client).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn library_artists(&self) -> Result<Vec<innertube::BrowseItem>, String> {
+        if !self.it.is_logged_in() {
+            return Ok(Vec::new());
+        }
+        let client = self.metadata_client()?;
+        self.it.library_artists(client).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn playlist_more(
+        &self,
+        token: &str,
+    ) -> Result<innertube::PlaylistContinuation, String> {
+        let client = self.metadata_client()?;
+        self.it.playlist_continuation(client, token).await.map_err(|e| e.to_string())
+    }
+
+    /// A YouTube album page, or a local album/artist page built from SQLite so it opens offline.
+    pub async fn album(&self, id: &str) -> Result<innertube::AlbumPage, String> {
+        if let Some(key) = id.strip_prefix(crate::local::ALBUM_PREFIX) {
+            return Ok(crate::local::album_page(&self.db, key));
+        }
+        if let Some(name) = id.strip_prefix(crate::local::ARTIST_PREFIX) {
+            return Ok(crate::local::artist_page(&self.db, name));
+        }
+        let client = self.metadata_client()?;
+        self.it.album(client, id).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn artist(&self, id: &str) -> Result<innertube::ArtistPage, String> {
+        let client = self.metadata_client()?;
+        self.it.artist(client, id).await.map_err(|e| e.to_string())
+    }
+
+    pub async fn browse_grid(
+        &self,
+        id: &str,
+        params: Option<&str>,
+    ) -> Result<Vec<innertube::BrowseItem>, String> {
+        let client = self.metadata_client()?;
+        self.it.browse_grid(client, id, params).await.map_err(|e| e.to_string())
+    }
+
+    pub fn set_volume(&self, volume: i64) -> Result<(), String> {
+        if !(0..=100).contains(&volume) {
+            return Err("Volume must be between 0 and 100.".into());
+        }
+        self.player.set_volume(volume).map_err(|e| e.to_string())?;
+        // There is one volume and there can be two windows (the mini player). Without this the one
+        // that didn't move the slider keeps showing the old level and lies about what you're hearing.
+        self.emit("volume", volume);
+        Ok(())
+    }
+
+    pub fn set_playback_params(&self, speed: f64, semitones: i32) -> Result<(), String> {
+        if !speed.is_finite() || !(0.25..=2.0).contains(&speed) {
+            return Err("Tempo must be between 0.25× and 2.00×.".into());
+        }
+        if !(-12..=12).contains(&semitones) {
+            return Err("Pitch must be between -12 and +12 semitones.".into());
+        }
+        // Pitch first: it's the one that can fail (no librubberband), and it rolls itself back, so a
+        // failure leaves nothing applied and the UI can revert both steppers together.
+        self.player.set_pitch(semitones).map_err(|e| e.to_string())?;
+        self.player.set_speed(speed).map_err(|e| e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

@@ -31,28 +31,16 @@ thiserror = { workspace = true }
 tauri = { version = "2", features = ["webview-data-url", "tray-icon", "protocol-asset", "macos-private-api"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
-rusqlite = { version = "0.32", features = ["bundled"] }
-# Stream extraction stack (cipher + PoToken).
-base64 = "0.22"
-regex = "1"
+# WebView harness data-URL encoding for the cipher/PoToken bridge (webview.rs).
 urlencoding = "2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "stream"] }
 
 innertube = { path = "../crates/innertube" }
 player = { path = "../crates/player" }
 ryotunes-core = { workspace = true }
 async-trait = { workspace = true }
+# OS media controls (MPRIS/SMTC) are surfaced by the host; the core drives them via EventSink.
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }
-# Listen Together protocol and WebSocket transport.
-listen-protocol = { workspace = true }
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
-futures-util = { workspace = true }
 rand = { workspace = true }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
-discord-rich-presence = "1.1.0"
-# Last.fm API signature (api_sig is md5 of the sorted params + secret).
-md-5 = "0.10"
-lofty = "0.22.2"
 tauri-plugin-dialog = "2.7.2"
 
 # Taskbar thumbnail toolbar (#47). Same `windows` version tauri-runtime-wry already pulls in, so

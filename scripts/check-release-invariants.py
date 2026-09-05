@@ -14,8 +14,8 @@ config = read('src-tauri/tauri.conf.json')
 main = read('src-tauri/src/main_window.rs')
 lib = read('src-tauri/src/lib.rs')
 commands = read('src-tauri/src/commands.rs')
-state = read('src-tauri/src/state.rs')
-media = read('src-tauri/src/media.rs')
+state = read('crates/core/src/state.rs')
+media = read('crates/core/src/media.rs')
 tray = read('src-tauri/src/tray.rs')
 mini_rs = read('src-tauri/src/mini.rs')
 layout = read('ui/src/routes/+layout.svelte')
@@ -50,22 +50,26 @@ playerbar = read('ui/src/lib/components/PlayerBar.svelte')
 layout_css = read('ui/src/routes/layout.css')
 ryoku_live = read('ui/src/lib/ryoku-live.ts')
 ryoku_theme = read('src-tauri/src/ryoku_theme.rs')
-radio = read('src-tauri/src/radio.rs')
-db = read('src-tauri/src/db.rs')
+radio = read('crates/core/src/radio.rs')
+db = read('crates/core/src/db.rs')
 add_to_playlist_ui = read('ui/src/lib/components/AddToPlaylist.svelte')
 radio_ui = read('ui/src/routes/radio/+page.svelte')
 package_builder = read('scripts/build-replacement-package.sh')
-lastfm = read('src-tauri/src/lastfm.rs')
-local_rs = read('src-tauri/src/local.rs')
+lastfm = read('crates/core/src/lastfm.rs')
+local_rs = read('crates/core/src/local.rs')
 default_cap = json.loads(read('src-tauri/capabilities/default.json'))
 mini_cap = json.loads(read('src-tauri/capabilities/mini.json'))
 security_workflow = read('.github/workflows/security.yml')
 sync_server = read('crates/sync-server/src/main.rs')
-session = read('src-tauri/src/session.rs')
+session = read('crates/core/src/session.rs')
 local_ui = read('ui/src/lib/components/LocalMusic.svelte')
 edit_playlist_ui = read('ui/src/lib/components/EditPlaylistDialog.svelte')
 library_page = read('ui/src/routes/library/+page.svelte')
 playlist_page = read('ui/src/routes/playlist/[id]/+page.svelte')
+local_scope = read('src-tauri/src/local_scope.rs')
+login_webview = read('src-tauri/src/login_webview.rs')
+core_lib = read('crates/core/src/lib.rs')
+discord = read('crates/core/src/discord.rs')
 
 # --- frozen v2.4.1 identity ----------------------------------------------------
 req('version = "2.4.1"' in cargo, 'workspace version is not 2.4.1')
@@ -81,7 +85,7 @@ req('name = "httpdate"' not in lock and 'name = "tauri-plugin-window-state"' not
 
 # --- audio-only / background architecture ----------------------------------
 active = '\n'.join(read(p) for p in [
-    'src-tauri/src/commands.rs','src-tauri/src/lib.rs','src-tauri/src/state.rs',
+    'src-tauri/src/commands.rs','src-tauri/src/lib.rs','crates/core/src/state.rs',
     'ui/src/lib/api.ts','ui/src/lib/player.svelte.ts','ui/src/lib/components/NowPlaying.svelte'])
 for forbidden in ['video_stream', 'set_webkit_media_enabled', 'videoproxy', 'hide_videos']:
     req(forbidden not in active, f'audio-only path regressed: {forbidden}')
@@ -106,7 +110,7 @@ req('std::process::Command::new("cmd")' not in lastfm and 'explorer.exe' in last
     'external browser URL can still pass through a command shell')
 req('const SCAN_VERSION: &str = "5"' in local_rs and 'sidecar_cover' in local_rs,
     'local cover migration/copy hardening missing')
-req('for dir in folders(db)' not in local_rs and 'scope.allow_directory(&covers, true)' in local_rs,
+req('for dir in folders(db)' not in local_scope and 'scope.allow_directory(&covers, true)' in local_scope,
     'watched music folders are recursively exposed through the asset protocol')
 req(default_cap.get('windows') == ['main'] and 'dialog:allow-open' not in default_cap.get('permissions', []),
     'main renderer regained direct native file-dialog capability')
@@ -117,7 +121,7 @@ req('portable_song' in commands and 'YouTube Music tracks only' in commands,
 req('@tauri-apps/plugin-dialog' not in local_ui and '@tauri-apps/plugin-dialog' not in edit_playlist_ui
     and '@tauri-apps/plugin-dialog' not in library_page and '@tauri-apps/plugin-dialog' not in playlist_page,
     'renderer still owns a filesystem picker path')
-req('allowed_login_navigation' in session and '.on_navigation(allowed_login_navigation)' in session,
+req('allowed_login_navigation' in session and '.on_navigation(allowed_login_navigation)' in login_webview,
     'Google login WebView navigation allowlist missing')
 req(mini_cap.get('windows') == ['mini'] and 'dialog:allow-open' not in mini_cap.get('permissions', []),
     'mini player has unnecessary file-dialog capability')
@@ -129,11 +133,11 @@ req('MAX_QUEUE_TRACKS' in sync_server and 'MAX_SUGGESTIONS_PER_ROOM' in sync_ser
     'Listen Together retained room-state limits missing')
 req('mpsc::channel::<ServerMessage>(OUTBOUND_QUEUE_CAPACITY)' in sync_server,
     'Listen Together relay outbound channel is unbounded')
-req("DEFAULT_PRESENCE_NAME: &str = \"Ryotunes\"" in read('src-tauri/src/discord.rs'),
+req("DEFAULT_PRESENCE_NAME: &str = \"Ryotunes\"" in discord,
     'Discord default presence title is not Ryotunes')
 
 # --- v2.4 Radio / device playlists / Discord title -------------------------
-req('mod radio;' in lib and 'commands::radio_stations' in lib and 'commands::play_radio_station' in lib,
+req('pub mod radio;' in core_lib and 'commands::radio_stations' in lib and 'commands::play_radio_station' in lib,
     'Internet Radio command wiring missing')
 req('RADIO_ID_PREFIX' in radio and 'hidebroken=true' in radio and 'count_click' in radio,
     'bounded Radio Browser integration missing')
@@ -153,7 +157,7 @@ req('LOCAL_PLAYLIST_PREFIX' in state and 'add_to_local_playlist' in commands,
     'device playlist native command path missing')
 req('Create + add' in add_to_playlist_ui and 'addToLocalPlaylist' in add_to_playlist_ui,
     'Add-to-playlist create-and-add flow missing')
-req('discord_presence_name' in commands and 'DEFAULT_PRESENCE_NAME' in read('src-tauri/src/discord.rs'),
+req('discord_presence_name' in commands and 'DEFAULT_PRESENCE_NAME' in discord,
     'custom Discord presence title backend missing')
 req('Discord presence title' in settings and "api.setSetting('discord_presence_name'" in settings,
     'custom Discord presence title UI missing')
@@ -176,7 +180,7 @@ req('void attempt(0);' in layout and 'requestAnimationFrame(() => void attempt(0
 req("const teardownReady = acknowledgeFrontend('main', ryokuTokens.ready)" in layout and "const teardownReady = acknowledgeFrontend('mini', ryokuTokens.ready)" in layout, 'main/mini theme-prime/reveal handshake not shared')
 req('pub fn frontend_ready(app: &AppHandle)' in main and 'w.show().map_err' in main and 'crate::mini::close(app);' in main, 'main reveal does not close mini only after successful show')
 req('pub fn arm_reveal_failsafe(app: &AppHandle, delay: Duration)' in main and 'frontend readiness deadline expired' in main, 'native hidden-window reveal failsafe missing')
-req('arm_reveal_failsafe(app.handle(), Duration::from_millis(1500))' in lib and 'arm_reveal_failsafe(app, Duration::from_millis(220))' in main, 'cold-start/second-launch reveal recovery missing')
+req('arm_reveal_failsafe(app.handle(), Duration::from_millis(4000))' in lib and 'arm_reveal_failsafe(app, Duration::from_millis(220))' in main, 'cold-start/second-launch reveal recovery missing')
 req('crate::tray::show_main(&app);' in commands and 'pub async fn close_mini' in commands, 'mini restore button does not use shared main restore path')
 req('RYOTUNES_APP_ID: &str = "dev.ryoku.ryotunes"' in main and 'RYOTUNES_MAIN_TITLE: &str = "Ryotunes"' in main, 'stable main window identity missing')
 req('args(["keyword", "windowrulev2"' not in main and "arg(\"windowrulev2\")" not in main, 'runtime Hyprland windowrule injection returned')
@@ -188,7 +192,7 @@ req('setfloating' in main and 'clients", "-j"' in main, 'Hyprland defensive fall
 req('tauri_plugin_window_state' not in main and 'tauri_plugin_window_state' not in lib, 'persisted geometry can override cold-start default')
 
 # --- Ryoku live theme parity -------------------------------------------------
-req('mod ryoku_theme;' in lib and 'ryoku_theme::spawn_watcher(handle.clone())' in lib, 'native Ryoku theme watcher is not wired')
+req('mod ryoku_theme;' in lib and 'ryoku_theme::spawn_watcher(sink.clone())' in lib, 'native Ryoku theme watcher is not wired')
 for name in ['theme.json', 'shell.json', 'colors.json']:
     req(name in ryoku_theme, f'Ryoku theme watcher missing {name}')
 req('inotify_init1' in ryoku_theme and 'IN_CLOSE_WRITE' in ryoku_theme and 'IN_MOVED_TO' in ryoku_theme, 'Ryoku theme watcher is not event-driven')
@@ -274,7 +278,7 @@ req('export const KEYBINDINGS: Keybind[]' in shortcuts and 'KEYBIND_GROUPS' in s
 req("initShortcuts(scope: 'main' | 'mini' = 'main')" in shortcuts and "scope === 'mini'" in shortcuts, 'mini/full shortcut scopes missing')
 for key in ['search.global','search.link','search.page','playback.toggle','playback.previous','playback.next','playback.seekBack','playback.seekForward','playback.mute','playback.shuffle','playback.repeat','playback.queue','playback.lyrics','playback.now','nav.back','nav.forward','nav.escape','interface.settings','interface.shortcuts']:
     req(key in shortcuts, f'keybind registry lost {key}')
-req('MediaControlEvent::Play' in media and 'MediaControlEvent::Pause' in media and 'MediaControlEvent::Next' in media and 'MediaControlEvent::Previous' in media, 'system media-key/MPRIS command coverage missing')
+req('MediaControlEvent::Play' in lib and 'MediaControlEvent::Pause' in lib and 'MediaControlEvent::Next' in lib and 'MediaControlEvent::Previous' in lib, 'system media-key/MPRIS command coverage missing')
 
 # --- v2.3 final-user field fixes -------------------------------------------
 req('const DEFAULT = 1.1;' in zoom, 'default UI scale is not 110%')

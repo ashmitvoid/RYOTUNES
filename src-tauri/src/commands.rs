@@ -124,30 +124,25 @@ fn canonical_music_folder(raw: &str) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn search(state: St<'_>, query: String) -> Result<Vec<SongItem>, String> {
-    let client = state.clients.get(innertube::METADATA_CLIENT).ok_or("metadata client missing")?;
-    let result = state.it.search_songs(client, &query).await.map_err(|e| e.to_string())?;
-    Ok(result.items)
+    state.search(&query).await
 }
 
 /// Songs-only first search page, including YouTube's opaque continuation token.
 #[tauri::command]
 pub async fn search_page(state: St<'_>, query: String) -> Result<SearchResult, String> {
-    let client = state.clients.get(innertube::METADATA_CLIENT).ok_or("metadata client missing")?;
-    state.it.search_songs(client, &query).await.map_err(|e| e.to_string())
+    state.search_page(&query).await
 }
 
 /// Continue a songs-only search page.
 #[tauri::command]
 pub async fn search_page_more(state: St<'_>, token: String) -> Result<SearchResult, String> {
-    let client = state.clients.get(innertube::METADATA_CLIENT).ok_or("metadata client missing")?;
-    state.it.search_songs_continuation(client, &token).await.map_err(|e| e.to_string())
+    state.search_page_more(&token).await
 }
 
 /// Unfiltered search → categorized sections for the search page.
 #[tauri::command]
 pub async fn search_all(state: St<'_>, query: String) -> Result<SearchResults, String> {
-    let client = metadata_client(&state)?;
-    state.it.search_all(client, &query).await.map_err(|e| e.to_string())
+    state.search_all(&query).await
 }
 
 /// Filtered "Show more" search for one category (albums / artists / playlists).
@@ -157,8 +152,7 @@ pub async fn search_cards(
     query: String,
     category: String,
 ) -> Result<Vec<BrowseItem>, String> {
-    let client = metadata_client(&state)?;
-    state.it.search_cards(client, &query, &category).await.map_err(|e| e.to_string())
+    state.search_cards(&query, &category).await
 }
 
 /// First filtered card page plus continuation.
@@ -168,22 +162,19 @@ pub async fn search_cards_page(
     query: String,
     category: String,
 ) -> Result<SearchCardPage, String> {
-    let client = metadata_client(&state)?;
-    state.it.search_cards_page(client, &query, &category).await.map_err(|e| e.to_string())
+    state.search_cards_page(&query, &category).await
 }
 
 /// Continue a filtered card search.
 #[tauri::command]
 pub async fn search_cards_more(state: St<'_>, token: String) -> Result<SearchCardPage, String> {
-    let client = metadata_client(&state)?;
-    state.it.search_cards_continuation(client, &token).await.map_err(|e| e.to_string())
+    state.search_cards_more(&token).await
 }
 
 /// Continue the mixed result stream if YouTube supplied one.
 #[tauri::command]
 pub async fn search_all_more(state: St<'_>, token: String) -> Result<SearchResults, String> {
-    let client = metadata_client(&state)?;
-    state.it.search_all_continuation(client, &token).await.map_err(|e| e.to_string())
+    state.search_all_more(&token).await
 }
 
 /// Play a track (from a search result). The UI passes the full item so we can seed the queue
@@ -323,30 +314,14 @@ pub async fn seek(state: St<'_>, position: f64) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
-    if !(0..=100).contains(&volume) {
-        return Err("Volume must be between 0 and 100.".into());
-    }
-    state.player.set_volume(volume).map_err(|e| e.to_string())?;
-    // There is one volume and there can be two windows (the mini player). Without this the one
-    // that didn't move the slider keeps showing the old level and lies about what you're hearing.
-    state.emit("volume", volume);
-    Ok(())
+    state.set_volume(volume)
 }
 
 /// Tempo (0.25–2.0) and pitch (−12..=12 semitones), the "Advanced" dialog. Volatile by design:
 /// both reset to 1.0 / 0 on restart, so nobody wonders next week why everything sounds wrong.
 #[tauri::command]
 pub async fn set_playback_params(state: St<'_>, speed: f64, semitones: i32) -> Result<(), String> {
-    if !speed.is_finite() || !(0.25..=2.0).contains(&speed) {
-        return Err("Tempo must be between 0.25× and 2.00×.".into());
-    }
-    if !(-12..=12).contains(&semitones) {
-        return Err("Pitch must be between -12 and +12 semitones.".into());
-    }
-    // Pitch first: it's the one that can fail (no librubberband), and it rolls itself back, so a
-    // failure leaves nothing applied and the UI can revert both steppers together.
-    state.player.set_pitch(semitones).map_err(|e| e.to_string())?;
-    state.player.set_speed(speed).map_err(|e| e.to_string())
+    state.set_playback_params(speed, semitones)
 }
 
 #[tauri::command]
@@ -574,14 +549,12 @@ fn metadata_client(state: &Arc<AppState>) -> Result<&innertube::YouTubeClient, S
 
 #[tauri::command]
 pub async fn get_home(state: St<'_>, params: Option<String>) -> Result<HomePage, String> {
-    let client = metadata_client(&state)?;
-    state.it.home(client, params.as_deref()).await.map_err(|e| e.to_string())
+    state.home(params.as_deref()).await
 }
 
 #[tauri::command]
 pub async fn get_home_more(state: St<'_>, token: String) -> Result<HomePage, String> {
-    let client = metadata_client(&state)?;
-    state.it.home_continuation(client, &token).await.map_err(|e| e.to_string())
+    state.home_more(&token).await
 }
 
 #[tauri::command]
@@ -653,20 +626,12 @@ pub async fn get_library(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
 /// these grids, so "nothing of yours on YouTube" is an answer, not a failure.
 #[tauri::command]
 pub async fn get_library_albums(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
-    if !state.it.is_logged_in() {
-        return Ok(Vec::new());
-    }
-    let client = metadata_client(&state)?;
-    state.it.library_albums(client).await.map_err(|e| e.to_string())
+    state.library_albums().await
 }
 
 #[tauri::command]
 pub async fn get_library_artists(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
-    if !state.it.is_logged_in() {
-        return Ok(Vec::new());
-    }
-    let client = metadata_client(&state)?;
-    state.it.library_artists(client).await.map_err(|e| e.to_string())
+    state.library_artists().await
 }
 
 /// A playlist or album page. `id` is the browseId (`VL…` / `MPRE…`); Liked Songs is `VLLM`, and
@@ -952,31 +917,19 @@ pub async fn get_playlist_more(
     state: St<'_>,
     token: String,
 ) -> Result<PlaylistContinuation, String> {
-    let client = metadata_client(&state)?;
-    state.it.playlist_continuation(client, &token).await.map_err(|e| e.to_string())
+    state.playlist_more(&token).await
 }
 
 /// An album page. `id` is the album browseId (`MPRE…`).
 #[tauri::command]
 pub async fn get_album(state: St<'_>, id: String) -> Result<AlbumPage, String> {
-    // A local album is built from SQLite, so it opens the same page while offline (local.rs).
-    if let Some(key) = id.strip_prefix(crate::local::ALBUM_PREFIX) {
-        return Ok(crate::local::album_page(&state.db, key));
-    }
-    // A local artist rides this route too: same page shape, and none of the artist route's
-    // YouTube furniture applies to files on disk (see `local::artist_page`).
-    if let Some(name) = id.strip_prefix(crate::local::ARTIST_PREFIX) {
-        return Ok(crate::local::artist_page(&state.db, name));
-    }
-    let client = metadata_client(&state)?;
-    state.it.album(client, &id).await.map_err(|e| e.to_string())
+    state.album(&id).await
 }
 
 /// An artist page. `id` is the channel browseId (`UC…`).
 #[tauri::command]
 pub async fn get_artist(state: St<'_>, id: String) -> Result<ArtistPage, String> {
-    let client = metadata_client(&state)?;
-    state.it.artist(client, &id).await.map_err(|e| e.to_string())
+    state.artist(&id).await
 }
 
 /// A card grid reached from a carousel's "More" button (e.g. an artist's full albums list).
@@ -986,8 +939,7 @@ pub async fn get_browse_grid(
     id: String,
     params: Option<String>,
 ) -> Result<Vec<BrowseItem>, String> {
-    let client = metadata_client(&state)?;
-    state.it.browse_grid(client, &id, params.as_deref()).await.map_err(|e| e.to_string())
+    state.browse_grid(&id, params.as_deref()).await
 }
 
 /// Play a playlist/album: the given items become the queue (no radio). `start` is the clicked
