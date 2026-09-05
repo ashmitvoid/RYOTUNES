@@ -19,6 +19,36 @@ Item {
     property bool lyricsOpen: false
     property bool nowPlayingOpen: false
 
+    // The mini player window's visibility. shell.qml's "Ryotunes Mini" FloatingWindow binds its
+    // visible to this; the title-bar and player-bar mini buttons toggle it, MiniPlayer clears it.
+    property bool miniOpen: false
+
+    // The Now Playing overlay's coupling with the player bar. Exactly one of queue/lyrics is the
+    // active tab while the overlay is open; opening a tab opens the overlay, and closing it clears
+    // all three. NowPlaying reads these and asks for changes through its tabRequested/closeRequested.
+    function npOpenTab(tab) {
+        app.nowPlayingOpen = true;
+        app.queueOpen = tab === "queue";
+        app.lyricsOpen = tab === "lyrics";
+    }
+    function npClose() {
+        app.nowPlayingOpen = false;
+        app.queueOpen = false;
+        app.lyricsOpen = false;
+    }
+    function npToggleTab(tab) {
+        if (app.nowPlayingOpen && ((tab === "queue" && app.queueOpen) || (tab === "lyrics" && app.lyricsOpen)))
+            app.npClose();
+        else
+            app.npOpenTab(tab);
+    }
+    function npToggle() {
+        if (app.nowPlayingOpen)
+            app.npClose();
+        else
+            app.npOpenTab(app.lyricsOpen ? "lyrics" : "queue");
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -26,8 +56,8 @@ Item {
         TitleBar {
             Layout.fillWidth: true
             onAccountClicked: (gx, gy) => accountMenu.openAt(gx, gy)
-            onListenTogetherClicked: Playback.toast("Listen Together arrives in a later build", "info")
-            onMiniClicked: Playback.toast("Mini player arrives in a later build", "info")
+            onListenTogetherClicked: listenTogether.open = !listenTogether.open
+            onMiniClicked: app.miniOpen = !app.miniOpen
         }
 
         RowLayout {
@@ -50,7 +80,8 @@ Item {
                     readonly property string page: Router.current ? Router.current.page : "home"
                     source: {
                         var m = { home: "HomePage", search: "SearchPage", library: "LibraryPage",
-                            playlist: "PlaylistPage", album: "AlbumPage", artist: "ArtistPage", list: "ListPage" };
+                            playlist: "PlaylistPage", album: "AlbumPage", artist: "ArtistPage", list: "ListPage",
+                            radio: "RadioPage", settings: "SettingsPage" };
                         return m[page] ? Qt.resolvedUrl("pages/" + m[page] + ".qml") : "";
                     }
                 }
@@ -58,6 +89,17 @@ Item {
                     anchors.fill: parent
                     active: pageLoader.status !== Loader.Ready
                     sourceComponent: placeholder
+                }
+
+                // The Now Playing surface (artwork + Queue/Lyrics tabs) rises over the routed page,
+                // right of the rail and above the transport, exactly as the Svelte overlay does.
+                NowPlaying {
+                    anchors.fill: parent
+                    nowPlayingOpen: app.nowPlayingOpen
+                    queueOpen: app.queueOpen
+                    lyricsOpen: app.lyricsOpen
+                    onTabRequested: (tab) => app.npOpenTab(tab)
+                    onCloseRequested: app.npClose()
                 }
             }
         }
@@ -68,10 +110,10 @@ Item {
             queueOpen: app.queueOpen
             lyricsOpen: app.lyricsOpen
             nowPlayingOpen: app.nowPlayingOpen
-            onToggleQueue: app.queueOpen = !app.queueOpen
-            onToggleLyrics: app.lyricsOpen = !app.lyricsOpen
-            onToggleNowPlaying: app.nowPlayingOpen = !app.nowPlayingOpen
-            onMiniClicked: Playback.toast("Mini player arrives in a later build", "info")
+            onToggleQueue: app.npToggleTab("queue")
+            onToggleLyrics: app.npToggleTab("lyrics")
+            onToggleNowPlaying: app.npToggle()
+            onMiniClicked: app.miniOpen = !app.miniOpen
         }
     }
 
@@ -229,4 +271,8 @@ Item {
             }
         }
     }
+
+    // Listen Together session sheet: a foreground overlay toggled from the title bar. It anchors the
+    // whole frame and is visible only while open.
+    ListenTogether { id: listenTogether }
 }

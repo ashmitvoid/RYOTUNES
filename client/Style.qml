@@ -54,6 +54,42 @@ Singleton {
         bone: "#292620", inkOnBone: "#eee8de", sun: "#e2342a", alert: "#d33b32"
     })
 
+    // The one MultiEffect blur the Now Playing wash spends. shell.services Perf (Perf.blurDisabled)
+    // is not importable under `qs -p client`, so this is the plan's fallback gate: a bool defaulting
+    // true that a surface checks before enabling its blur.
+    readonly property bool blurEnabled: true
+
+    // --- theme mode -------------------------------------------------------------------------
+    // "system": colours follow Tokens (Follow System / named scheme / wallpaper). "light"/"dark":
+    // pin Tokens' Material roles to the matching local palette so the whole chrome — every surface
+    // that reads Tokens — re-renders at once, with no per-file colour plumbing. scheme() maps the
+    // app palette (paper/ink/bone/…) onto the role names Tokens.role() resolves. applyTheme runs on
+    // every switch: a fixed palette overwrites namedScheme; "system" re-reads Tokens' file-driven
+    // scheme so the chrome returns to the live theme (deterministic both ways — a Binding's
+    // restore-on-deactivate did not reliably revert the Quickshell singleton property). Client-local:
+    // the daemon has no UI_SETTINGS key for the theme, so the mode is session state.
+    property string themeMode: "system"   // "system" | "light" | "dark"
+
+    function scheme(p) {
+        return {
+            surface: p.paper,
+            surfaceContainerLow: p.paperLift,
+            onSurface: p.ink,
+            onSurfaceVariant: p.inkDim,
+            inverseSurface: p.bone,
+            inverseOnSurface: p.inkOnBone,
+            primary: p.sun
+        };
+    }
+
+    function applyTheme() {
+        if (root.themeMode === "system")
+            Tokens.refreshNamed();
+        else
+            Tokens.namedScheme = root.scheme(root.themeMode === "light" ? root.light : root.dark);
+    }
+    onThemeModeChanged: root.applyTheme()
+
     function thumb(url, px) { return Fns.thumb(url, px); }
     function fmtTime(secs) { return Fns.fmtTime(secs); }
 }
