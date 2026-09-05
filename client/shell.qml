@@ -14,13 +14,18 @@ ShellRoot {
         title: "Ryotunes"
         color: Tokens.paper
         minimumSize: Qt.size(900, 620)
-        Text {
-            anchors.centerIn: parent
-            color: Tokens.ink
-            font.family: "Space Grotesk"
-            text: Daemon.connected ? ("ryotunesd " + Daemon.daemonVersion + " (protocol " + Daemon.protocol + ")") : "connecting to ryotunesd…"
+
+        // Honour this monitor's Interface scale through Tokens, the same way the Hub does; the app's
+        // own sp()/type scale ride on it.
+        Binding {
+            target: Tokens
+            property: "uiScale"
+            value: Tokens.uiScaleFor(win.screen && win.screen.name ? win.screen.name : "")
         }
+
+        App { anchors.fill: parent }
     }
+
     IpcHandler {
         target: "window"
         function show(): void { win.visible = true; }
