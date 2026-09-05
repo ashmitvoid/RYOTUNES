@@ -7,10 +7,10 @@ import "../components"
 import "../lib/browse.js" as Browse
 
 // The pinboard of manual shortcuts, ported from Shortcuts.svelte: a grid of the user's pinned items
-// (each plays or opens, and a hover X removes it) plus the trailing "add" tile. The pins themselves
-// live in the Svelte app's local personalization store, which the native client does not yet share,
-// so `picks` is fed empty here and the add tile routes into Search where an item is pinned. The
-// display, play/open and remove paths are complete and drive off `picks` once a source exists.
+// (each plays or opens, and a hover X removes it) plus the trailing "add" tile. `picks` comes from
+// the shared Personal store (the daemon's personal blob), so a tile pinned in the Tauri app or a
+// second client shows here too; `removed` drops it through Personal.removePick. The add tile routes
+// into Search, where a card's menu pins it.
 ColumnLayout {
     id: root
 
