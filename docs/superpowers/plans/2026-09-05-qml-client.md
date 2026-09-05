@@ -272,6 +272,26 @@ git commit -m "client: home page with shelves, shortcuts and artist index"
 
 ---
 
+### Task 4b: The personal store moves to the daemon
+
+Found in Task 4: Shortcuts, "Jump back in", the artist index, local saves, pins and the Home arrangement live in the Svelte app's browser `localStorage` (`ui/src/lib/personal.ts` `Personal`), which no native client can read. It is user state, so it belongs in the daemon.
+
+**Files:**
+- Modify: `crates/core/src/state.rs` (two methods), `crates/core/src/db.rs` if a JSON blob setting helper is missing, `src-tauri/src/commands.rs` + `src-tauri/src/lib.rs` (two new commands), `crates/ryotunesd/src/methods.rs` (two arms), `ui/src/lib/personal.ts` + `ui/src/lib/player.svelte.ts` (`savePersonal`/load go through the commands, with a one-time migration from `localStorage`), `client/lib/personal.js` (port of the pure functions), `client/Personal.qml` (singleton), `client/pages/HomePage.qml` (Shortcuts, RecentRail, ArtistIndex fed from it)
+- Test: `crates/core/src/state.rs` round-trip test; `client/tests/tst_personal.qml` for `touchPick`, `noteArtist`, `arrangeSections`, `hydrate` tolerance (ported from the `personal.check.ts` cases)
+
+**Interfaces:**
+- `AppState::personal(&self) -> serde_json::Value` (the stored blob or `{}`), `AppState::set_personal(&self, blob: Value) -> Result<(), String>` (rejects non-objects and blobs over 1 MiB; stores under the setting key `personal_json`).
+- Methods `get_personal` / `set_personal` with `{"personal": {...}}`; event `personal-changed` with the blob, emitted on every `set_personal` so a second client (mini, shell) follows.
+- Svelte: on startup, if `get_personal` returns `{}` and `localStorage.personal` exists, `hydrate` it and `set_personal` once, then delete the local copy; `savePersonal()` becomes `set_personal` (debounced 300 ms as the current save already is).
+- QML: `Personal` singleton mirrors the blob, applies `personal-changed`, and exposes the same reducers (`touchPick`, `noteArtist`, `addPick`, `removePick`, `pin`, `unpin`, `arrangeSections`) writing back through `set_personal`.
+
+- [ ] **Step 1: Core + daemon + Tauri command** (one commit `core: keep the personal store in the daemon`).
+- [ ] **Step 2: Svelte migration** (`ui: move the personal store to the backend`), verified by signing in on the Tauri app, seeing existing Shortcuts survive, and `ryotunes-cli get_personal` showing them.
+- [ ] **Step 3: QML `Personal` + Home blocks** (`client: shortcuts, jump back in and artist index from the shared personal store`), verified by the same Shortcuts appearing in the QML client's Home.
+
+---
+
 ### Task 5: Search, Library, Playlist, Album, Artist, List pages
 
 **Files:**
