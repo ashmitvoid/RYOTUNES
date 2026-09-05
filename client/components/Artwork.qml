@@ -1,12 +1,16 @@
+pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Effects
 import Ryoku.Ui.Singletons
 import "../"
 
 // Track/album/artist artwork with the neutral placeholder every absent or failed thumbnail lands
 // on. The URL is rewritten by Style.thumb() to the exact pixel size drawn (2x for crispness) so the
-// CDN returns a small image and the decode/cache stays bounded. A rounded-rectangle (or circle,
-// for artists) mask keeps the corners honest to the design language without a per-image clip hack.
+// CDN returns a small image and the decode/cache stays bounded.
+//
+// Rounded corners cost one layer, not three: the Image renders into its own layer and a tiny
+// fragment shader (shaders/rounded.frag) clips it to a rounded rectangle from a signed-distance
+// field. The previous MultiEffect mask needed the image layer, a mask layer and the effect's own
+// pass per thumbnail, and measured 20% of a core scrolling a 700-track list.
 Item {
     id: root
 
@@ -19,10 +23,12 @@ Item {
     width: px
     height: px
 
+    readonly property real cornerRadius: root.round ? width / 2 : Style.radius
+
     Rectangle {
         id: plate
         anchors.fill: parent
-        radius: root.round ? width / 2 : Style.radius
+        radius: root.cornerRadius
         color: Tokens.paperLift
         border.width: 1
         border.color: Tokens.lineSoft
@@ -44,23 +50,23 @@ Item {
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true
-        visible: false
+        visible: status === Image.Ready
         layer.enabled: true
+        layer.effect: ShaderEffect {
+            // The layer's pixel size: the item size times the window's device pixel ratio, which
+            // is what the SDF needs so the radius is in the same units as the texture.
+            property vector2d size: Qt.vector2d(img.width * img.Screen.devicePixelRatio, img.height * img.Screen.devicePixelRatio)
+            property real radius: root.cornerRadius * img.Screen.devicePixelRatio
+            fragmentShader: Qt.resolvedUrl("../shaders/rounded.frag.qsb")
+        }
     }
 
     Rectangle {
-        id: mask
         anchors.fill: parent
-        radius: plate.radius
-        visible: false
-        layer.enabled: true
-    }
-
-    MultiEffect {
-        anchors.fill: parent
-        source: img
-        maskEnabled: true
-        maskSource: mask
-        visible: img.status === Image.Ready
+        radius: root.cornerRadius
+        color: "transparent"
+        border.width: 1
+        border.color: Tokens.lineSoft
+        visible: img.visible
     }
 }
