@@ -593,6 +593,8 @@ git commit -m "core: move state, orchestrator, local, lastfm and session; host i
 
 ### Task 6: Shrink the host to forwarders and run the release gates
 
+Landed as commit 2fc74e7 (after 9d6165a, which fixed a startup panic the substitution table caused: `lastfm::spawn` runs from Tauri's synchronous `setup`, so it now takes an explicit `tokio::runtime::Handle`; the daemon will pass its own). 18 command bodies moved into `AppState` methods; 11 dependencies left `src-tauri/Cargo.toml`; `urlencoding` and `souvlaki` stay in the host. Smoke-tested: identical cipher/PoToken/WEB_REMIX sequence, MPRIS pause/play round-trip through `TauriSink`, close-while-playing and tray reopen, playing on Home at host 2.9% + web 2.1%.
+
 **Files:**
 - Modify: `src-tauri/src/commands.rs` (every handler forwards into `ryotunes_core`), `src-tauri/src/lib.rs` (setup builds `Paths`, the three trait objects, then `AppState::new`), `src-tauri/Cargo.toml` (drop dependencies now only used by core: `rusqlite`, `base64`, `regex`, `urlencoding`, `reqwest`, `souvlaki`, `tokio-tungstenite`, `rustls`, `discord-rich-presence`, `md-5`, `lofty`; keep `tauri*`, `webkit2gtk`, `ksni`, `libc`, `serde*`, `tokio`, `tracing*`, `async-trait`, `ryotunes-core`)
 - Modify: `docs/ARCHITECTURE.md` (add the crate table from the spec's 4.1), `scripts/check-rust-structure.py` if it asserts the old module list
