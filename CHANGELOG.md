@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Fixed the timeline freezing for the rest of a session after a seek-thumb drag released outside the window: WebKitGTK delivered neither `change` nor `pointerup`, so the locally held drag value shadowed every later position tick (reproduced by dragging past the window's bottom edge; MPRIS kept ticking, the bar did not). Both seek sliders now commit the pending drag on pointer release, capture loss, window blur, the first buttonless pointer move, or a track change.
+- Removed the scroll-time `ryo-is-scrolling` class toggle: rules keyed on it reached every image and every promoted artwork layer, so each wheel notch cost a whole-page style recalculation plus compositing-layer churn, twice. Scrolling stays paint-bound in WebKitGTK (about 60% of a core while scrolling on a 2560x1600 panel, unchanged), which the native client work addresses.
+- Added `RYOTUNES_WEBKIT_FEATURES=Name=1,...` to flip WebKitGTK feature flags (for example `CompositingBordersVisible`, `CompositingRepaintCountersVisible`) when profiling the renderer.
+- Brought the release gate back to green on a clean checkout: the reveal-failsafe invariant matched the old 1500 ms, the private-path scan tripped on a git worktree's `.git` file, and two files had drifted from rustfmt.
+
 ## v2.4.1 — 2026-09-02
 
 - Isolated the remote Google login and hidden cipher/PoToken JavaScript WebViews from all Ryotunes application commands using Tauri's runtime-authority AppManifest and an explicit main/mini-only command permission.
