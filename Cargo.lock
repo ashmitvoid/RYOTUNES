@@ -3952,6 +3952,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ryotunes-protocol"
+version = "2.4.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
