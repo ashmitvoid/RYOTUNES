@@ -3960,6 +3960,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ryotunesd"
+version = "2.4.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "innertube",
+ "libc",
+ "player",
+ "ryotunes-core",
+ "ryotunes-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
