@@ -37,6 +37,7 @@ urlencoding = "2"
 innertube = { path = "../crates/innertube" }
 player = { path = "../crates/player" }
 ryotunes-core = { workspace = true }
+ryotunes-protocol = { workspace = true }
 async-trait = { workspace = true }
 # OS media controls (MPRIS/SMTC) are surfaced by the host; the core drives them via EventSink.
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }

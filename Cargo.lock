@@ -3903,6 +3903,7 @@ dependencies = [
  "player",
  "rand 0.8.7",
  "ryotunes-core",
+ "ryotunes-protocol",
  "serde",
  "serde_json",
  "souvlaki",

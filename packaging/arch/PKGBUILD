@@ -18,7 +18,7 @@ depends=(
   'xdg-utils'
 )
 optdepends=(
-  'quickshell: native QML client (ryotunes-qml); set RYOTUNES_CLIENT=qml for the daemon to launch it'
+  'quickshell: native QML client (ryotunes-qml), opened by ryotunes whenever ryotunesd is running'
 )
 makedepends=(
   'base-devel'

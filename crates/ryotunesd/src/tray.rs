@@ -93,22 +93,19 @@ impl Tray for RyotunesTray {
     }
 }
 
-/// The daemon's "come back" path, shared by the tray (Show / left-click) and the `show` socket
-/// method (a second `ryotunesd` launch). A subscribed client is told to raise its window; with no
-/// client listening the client launcher is spawned detached. `RYOTUNES_CLIENT=qml` selects the
-/// native Quickshell client (`ryotunes-qml`); anything else keeps the Tauri app (`ryotunes`).
+/// The daemon's "come back" path, shared by the tray (Show / left-click), the `show` socket
+/// method (a second `ryotunesd` launch) and the Tauri binary deferring to a live daemon. A
+/// subscribed client is told to raise its window; with no client listening the native client
+/// (`ryotunes-qml`) is spawned detached. It is the only client that speaks to this daemon: the
+/// Tauri app carries its own player, so launching it here would put two engines on the same audio
+/// device (it was once selected by `RYOTUNES_CLIENT`; that produced exactly that bug).
 pub fn show(sink: &Arc<SocketSink>) {
     if sink.subscriber_count() > 0 {
         sink.emit("show", Value::Null);
         return;
     }
-    let client = if std::env::var("RYOTUNES_CLIENT").as_deref() == Ok("qml") {
-        "ryotunes-qml"
-    } else {
-        "ryotunes"
-    };
-    if let Err(e) = std::process::Command::new(client).spawn() {
-        tracing::warn!(error = %e, client, "`show` could not launch the client");
+    if let Err(e) = std::process::Command::new("ryotunes-qml").spawn() {
+        tracing::warn!(error = %e, "`show` could not launch ryotunes-qml");
     }
 }
 
