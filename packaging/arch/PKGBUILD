@@ -29,6 +29,9 @@ makedepends=(
   'xdotool'
 )
 install=ryotunes.install
+# makepkg's lto option feeds -flto to the C sources cc builds for the vendored sqlite and ring;
+# rustc links with lld, which cannot read GCC LTO objects (undefined sqlite3_* / ring_core_*).
+options=(!lto)
 source=()
 sha256sums=()
 
