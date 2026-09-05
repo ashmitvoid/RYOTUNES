@@ -15,7 +15,7 @@ use futures_util::{SinkExt, StreamExt};
 use listen_protocol::{
     ClientMessage, Playback, PlaybackKind, RoomState, ServerMessage, Suggestion, Track, User,
 };
-use tauri::{AppHandle, Emitter};
+use crate::host::EventSink;
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::Message;
 
@@ -143,7 +143,7 @@ impl Inner {
 }
 
 pub struct LtSession {
-    app: AppHandle,
+    sink: Arc<dyn EventSink>,
     inner: Arc<Mutex<Inner>>,
     sync_tx: mpsc::UnboundedSender<SyncCommand>,
     /// Bumped to cancel the running connection loop (leave / new connection).
@@ -153,7 +153,7 @@ pub struct LtSession {
 impl LtSession {
     /// Create the session. Returns the receiver the bridge task drains to drive guest playback.
     pub fn new(
-        app: AppHandle,
+        sink: Arc<dyn EventSink>,
         server_url: String,
     ) -> (Arc<Self>, mpsc::UnboundedReceiver<SyncCommand>) {
         // rustls needs a process-wide crypto provider before the first `wss://` handshake.
@@ -161,7 +161,7 @@ impl LtSession {
         let (sync_tx, sync_rx) = mpsc::unbounded_channel();
         let inner = Inner { server_url, ..Inner::default() };
         let s = Arc::new(LtSession {
-            app,
+            sink,
             inner: Arc::new(Mutex::new(inner)),
             sync_tx,
             gen: AtomicU64::new(0),
@@ -658,11 +658,11 @@ impl LtSession {
 
     async fn emit_state(&self) {
         let snap = { Self::snapshot_of(&*self.inner.lock().await) };
-        let _ = self.app.emit("lt-state", snap);
+        self.sink.emit("lt-state", snap);
     }
 
     async fn emit_notice(&self, msg: &str) {
-        let _ = self.app.emit("lt-notice", msg);
+        self.sink.emit("lt-notice", serde_json::json!(msg));
     }
 }
 
@@ -670,4 +670,19 @@ impl LtSession {
 fn backoff_delay(attempt: u32) -> Duration {
     let shift = attempt.clamp(1, 6) - 1; // 0..=5 → 1,2,4,8,16,32
     Duration::from_secs(1u64 << shift)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn emit_state_reaches_the_sink() {
+        use crate::host::test_support::RecordingSink;
+        let sink = std::sync::Arc::new(RecordingSink::default());
+        let (session, _rx) = LtSession::new(sink.clone(), "wss://example.invalid".into());
+        session.emit_state().await;
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.last().map(|e| e.0), Some("lt-state"));
+    }
 }

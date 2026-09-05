@@ -2,8 +2,9 @@
 //!
 //! `souvlaki`'s `MediaControls` isn't `Send`, and on Windows/macOS its events arrive on the
 //! platform's own loop — so we give it a dedicated owner thread. The app talks to that thread over
-//! a channel ([`MediaHandle`]); OS control presses route back into [`AppState`] through the
-//! captured `AppHandle`. The two share the same commands the UI uses, so they never drift.
+//! a channel ([`MediaHandle`]); OS control presses route back out over an mpsc channel of
+//! [`MediaControlEvent`]s that the host drains into `AppState`. The two share the same commands the
+//! UI uses, so they never drift.
 
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
@@ -11,11 +12,10 @@ use std::time::Duration;
 
 use souvlaki::{
     MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig,
-    SeekDirection,
 };
-use tauri::{AppHandle, Manager};
+use tokio::sync::mpsc::UnboundedSender;
 
-use crate::state::AppState;
+use crate::host::EventSink;
 
 /// Update messages: app → media-controls owner thread.
 enum MediaUpdate {
@@ -78,10 +78,16 @@ impl MediaHandle {
 
 /// Spawn the media-controls owner thread. Returns `None` if the platform controls can't be
 /// created (integration simply absent then — MPRIS-only fallback is blessed, fail-soft policy).
-pub fn spawn(app: AppHandle) -> Option<MediaHandle> {
+///
+/// `_sink` is reserved for future media-originated events; today OS control presses travel out
+/// over `commands`, which the host drains into `AppState`.
+pub fn spawn(
+    _sink: Arc<dyn EventSink>,
+    commands: UnboundedSender<MediaControlEvent>,
+) -> Option<MediaHandle> {
     let (tx, rx) = channel::<MediaUpdate>();
     let spawned =
-        std::thread::Builder::new().name("media-controls".into()).spawn(move || run(app, rx));
+        std::thread::Builder::new().name("media-controls".into()).spawn(move || run(commands, rx));
     match spawned {
         Ok(_) => Some(MediaHandle { tx }),
         Err(e) => {
@@ -93,14 +99,9 @@ pub fn spawn(app: AppHandle) -> Option<MediaHandle> {
 
 // `duration` is reset per track in the Metadata arm; the lint can't see the loop's later reads.
 #[allow(unused_assignments)]
-fn run(app: AppHandle, rx: std::sync::mpsc::Receiver<MediaUpdate>) {
-    // On Windows SMTC needs the main window handle; Linux/macOS ignore it.
-    #[cfg(target_os = "windows")]
-    let hwnd = app
-        .get_webview_window("main")
-        .and_then(|w| w.hwnd().ok())
-        .map(|h| h.0 as *mut std::ffi::c_void);
-    #[cfg(not(target_os = "windows"))]
+fn run(commands: UnboundedSender<MediaControlEvent>, rx: std::sync::mpsc::Receiver<MediaUpdate>) {
+    // The core owns no window handle; on Windows the host would supply one for SMTC. Linux/MPRIS
+    // ignores it.
     let hwnd = None;
 
     let config = PlatformConfig { dbus_name: "ryotunes", display_name: "Ryotunes", hwnd };
@@ -111,8 +112,9 @@ fn run(app: AppHandle, rx: std::sync::mpsc::Receiver<MediaUpdate>) {
             return;
         }
     };
-    let cb_app = app.clone();
-    if let Err(e) = controls.attach(move |event| handle_event(&cb_app, event)) {
+    if let Err(e) = controls.attach(move |event| {
+        let _ = commands.send(event);
+    }) {
         tracing::warn!(error = ?e, "media controls attach failed");
         return;
     }
@@ -184,46 +186,5 @@ fn apply_metadata(
         album: album.as_deref(),
         cover_url: cover.as_deref(),
         duration: duration.map(Duration::from_secs_f64),
-    });
-}
-
-/// Route an OS control press into the same [`AppState`] methods the UI commands use. Runs the
-/// async work on the Tauri runtime (the callback fires on souvlaki's own thread, and on Windows
-/// also on the UI thread via the taskbar toolbar).
-pub(crate) fn handle_event(app: &AppHandle, event: MediaControlEvent) {
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let Some(state) = app.try_state::<Arc<AppState>>() else { return };
-        let state = state.inner().clone();
-        match event {
-            MediaControlEvent::Play => state.resume().await,
-            MediaControlEvent::Toggle => state.resume_or_toggle().await,
-            MediaControlEvent::Pause => {
-                let _ = state.player.pause();
-            }
-            MediaControlEvent::Stop => {
-                let _ = state.player.stop();
-                state.media_set_playing(false);
-                crate::main_window::schedule_idle_exit(&app);
-            }
-            MediaControlEvent::Next => state.next_in_queue().await,
-            MediaControlEvent::Previous => state.prev_in_queue().await,
-            MediaControlEvent::SetPosition(MediaPosition(pos)) => {
-                let _ = state.player.seek(pos.as_secs_f64());
-            }
-            MediaControlEvent::SeekBy(dir, by) => {
-                let delta = if matches!(dir, SeekDirection::Forward) {
-                    by.as_secs_f64()
-                } else {
-                    -by.as_secs_f64()
-                };
-                let _ = state.player.seek((state.current_position() + delta).max(0.0));
-            }
-            MediaControlEvent::Seek(dir) => {
-                let delta = if matches!(dir, SeekDirection::Forward) { 10.0 } else { -10.0 };
-                let _ = state.player.seek((state.current_position() + delta).max(0.0));
-            }
-            _ => {}
-        }
     });
 }

@@ -11,6 +11,9 @@
 
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use ryotunes_core::host::EventSink;
 
 fn base_dir(env_key: &str, fallback: &str) -> PathBuf {
     if let Some(v) = std::env::var_os(env_key) {
@@ -135,9 +138,7 @@ pub fn tokens() -> Value {
 }
 
 #[cfg(target_os = "linux")]
-pub fn spawn_watcher(app: tauri::AppHandle) {
-    use tauri::Emitter;
-
+pub fn spawn_watcher(sink: Arc<dyn EventSink>) {
     let (config, cache) = paths();
     std::thread::Builder::new()
         .name("ryoku-theme-watch".into())
@@ -206,7 +207,7 @@ pub fn spawn_watcher(app: tauri::AppHandle) {
                     // Directory events are CLOSE_WRITE/MOVED_TO/CREATE, so the producer has
                     // finished the write before we read. The payload itself is the fresh token set;
                     // WebKit does not need a second timer or filesystem round-trip.
-                    let _ = app.emit("ryoku-theme-changed", tokens());
+                    sink.emit("ryoku-theme-changed", tokens());
                 }
             }
 
@@ -216,4 +217,4 @@ pub fn spawn_watcher(app: tauri::AppHandle) {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn spawn_watcher(_app: tauri::AppHandle) {}
+pub fn spawn_watcher(_sink: Arc<dyn EventSink>) {}

@@ -2,7 +2,7 @@
 //!
 //! Separate from the SMTC session `media.rs` drives. SMTC feeds the media OSD, the volume flyout
 //! and the lock screen; the buttons on the taskbar hover preview come from `ITaskbarList3`
-//! (`ThumbBarAddButtons`) and nothing else. Clicks route back through [`crate::media::handle_event`]
+//! (`ThumbBarAddButtons`) and nothing else. Clicks route back through [`crate::handle_media_event_from_app`]
 //! so the OS controls and this toolbar share one code path.
 //!
 //! Everything here runs on the main thread: `ITaskbarList3` is apartment-bound and the toolbar's
@@ -179,7 +179,7 @@ unsafe extern "system" fn subclass_proc(
             // `handle_event` only spawns onto the Tauri runtime, so this can't re-enter the borrow.
             BAR.with(|b| {
                 if let Some(bar) = b.borrow().as_ref() {
-                    crate::media::handle_event(&bar.app, event);
+                    crate::handle_media_event_from_app(&bar.app, event);
                 }
             });
             return LRESULT(0);

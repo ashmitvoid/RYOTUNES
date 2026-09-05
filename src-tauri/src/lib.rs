@@ -2,12 +2,11 @@
 
 mod commands;
 mod discord;
+mod host_sink;
 mod lastfm;
-mod listentogether;
 mod local;
 mod lyrics;
 mod main_window;
-mod media;
 mod mini;
 mod orchestrator;
 mod radio;
@@ -25,7 +24,7 @@ use std::time::Duration;
 use innertube::{Clients, InnerTube, Locale, Session};
 use player::{Player, PlayerEvent};
 use tauri::{Emitter, Manager};
-use ryotunes_core::{cipher, db, http, potoken};
+use ryotunes_core::{cipher, db, http, listentogether, media, potoken};
 
 use cipher::{CipherDeobfuscator, PlayerConfigStore};
 use db::Db;
@@ -274,9 +273,14 @@ pub fn run() {
                 potoken.clone(),
             ));
 
-            // OS media controls (MPRIS/SMTC/NowPlaying). Its callback resolves AppState lazily, so
-            // it's fine to spawn before AppState is managed. fail-soft policy, D11.
-            let media = media::spawn(handle.clone());
+            // Push channel to every UI window: core emits through this sink, the host fans out.
+            let sink: Arc<dyn ryotunes_core::host::EventSink> =
+                Arc::new(host_sink::TauriSink(handle.clone()));
+
+            // OS media controls (MPRIS/SMTC/NowPlaying). Control presses arrive over `media_rx`;
+            // the drain below routes them into AppState once it is managed. fail-soft policy, D11.
+            let (media_tx, mut media_rx) = tokio::sync::mpsc::unbounded_channel();
+            let media = media::spawn(sink.clone(), media_tx);
             // Taskbar preview buttons (#47). Windows-only, and a different API from the SMTC
             // session above.
             #[cfg(target_os = "windows")]
@@ -301,7 +305,7 @@ pub fn run() {
             // user chooses one.
             let lt_url =
                 db.get_setting("lt_server_url").filter(|u| !u.is_empty()).unwrap_or_default();
-            let (lt, lt_sync_rx) = listentogether::LtSession::new(handle.clone(), lt_url);
+            let (lt, lt_sync_rx) = listentogether::LtSession::new(sink.clone(), lt_url);
 
             let app_state = Arc::new(AppState::new(
                 it,
@@ -318,10 +322,21 @@ pub fn run() {
             ));
             app.manage(app_state.clone());
 
+            // OS media control presses (media keys, MPRIS, Windows taskbar) come off `media_rx`;
+            // apply them to the now-managed AppState on the Tauri runtime.
+            {
+                let st = app_state.clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Some(ev) = media_rx.recv().await {
+                        handle_media_event(st.clone(), ev).await;
+                    }
+                });
+            }
+
             // Ryoku's own QML apps watch the live palette files. Mirror that with one blocking
             // inotify watcher rather than a JavaScript polling clock so named themes and wallpaper
             // palettes reach Ryotunes immediately while idle CPU stays asleep.
-            ryoku_theme::spawn_watcher(handle.clone());
+            ryoku_theme::spawn_watcher(sink.clone());
 
             // Local music artwork reaches the webview over the asset protocol, whose configured
             // scope is empty — the folders it may read are the ones the user picked (local.rs).
@@ -605,6 +620,56 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+/// Route an OS media-control press into the same [`AppState`] methods the UI commands use. The
+/// media-controls thread (and, on Windows, the taskbar toolbar) feed presses here over `media_rx`.
+async fn handle_media_event(state: Arc<AppState>, event: souvlaki::MediaControlEvent) {
+    use souvlaki::{MediaControlEvent, MediaPosition, SeekDirection};
+    match event {
+        MediaControlEvent::Play => state.resume().await,
+        MediaControlEvent::Toggle => state.resume_or_toggle().await,
+        MediaControlEvent::Pause => {
+            let _ = state.player.pause();
+        }
+        MediaControlEvent::Stop => {
+            let _ = state.player.stop();
+            state.media_set_playing(false);
+            main_window::schedule_idle_exit(&state.app);
+        }
+        MediaControlEvent::Next => state.next_in_queue().await,
+        MediaControlEvent::Previous => state.prev_in_queue().await,
+        MediaControlEvent::SetPosition(MediaPosition(pos)) => {
+            let _ = state.player.seek(pos.as_secs_f64());
+        }
+        MediaControlEvent::SeekBy(dir, by) => {
+            let delta = if matches!(dir, SeekDirection::Forward) {
+                by.as_secs_f64()
+            } else {
+                -by.as_secs_f64()
+            };
+            let _ = state.player.seek((state.current_position() + delta).max(0.0));
+        }
+        MediaControlEvent::Seek(dir) => {
+            let delta = if matches!(dir, SeekDirection::Forward) { 10.0 } else { -10.0 };
+            let _ = state.player.seek((state.current_position() + delta).max(0.0));
+        }
+        _ => {}
+    }
+}
+
+/// The Windows taskbar toolbar holds only an `AppHandle`; resolve the managed state and route its
+/// press through [`handle_media_event`], matching the old `media::handle_event` fire-and-forget.
+#[cfg(target_os = "windows")]
+pub(crate) fn handle_media_event_from_app(
+    app: &tauri::AppHandle,
+    event: souvlaki::MediaControlEvent,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(state) = app.try_state::<Arc<AppState>>() else { return };
+        handle_media_event(state.inner().clone(), event).await;
+    });
 }
 
 /// ✕ hides to tray unless the user explicitly set close_to_tray=false (unset → default on).
