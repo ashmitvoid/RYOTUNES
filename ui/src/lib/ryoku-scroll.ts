@@ -8,33 +8,13 @@
  *
  * Only legacy/coarse LINE/PAGE wheel events get a short velocity tail.  This is deliberately small:
  * the goal is to take the square edge off a mouse-wheel notch, not to replace the browser scroller.
- * The attachment also marks a scroller while it is moving so expensive card-hover polish can step
- * aside until the scroll settles.
  */
 export function ryokuWheelScroll(el: HTMLElement) {
 	let raf = 0;
 	let velocity = 0; // px per nominal 60 Hz frame
 	let lastFrame = 0;
-	let scrollEndTimer = 0;
-	let lastScrollAt = 0;
 
 	const clamp = (v: number) => Math.max(0, Math.min(v, el.scrollHeight - el.clientHeight));
-
-	function settleScrolling() {
-		const remaining = 110 - (performance.now() - lastScrollAt);
-		if (remaining > 1) {
-			scrollEndTimer = window.setTimeout(settleScrolling, remaining);
-			return;
-		}
-		scrollEndTimer = 0;
-		el.classList.remove('ryo-is-scrolling');
-	}
-
-	function markScrolling() {
-		lastScrollAt = performance.now();
-		if (!el.classList.contains('ryo-is-scrolling')) el.classList.add('ryo-is-scrolling');
-		if (!scrollEndTimer) scrollEndTimer = window.setTimeout(settleScrolling, 110);
-	}
 
 	function stopKinetic() {
 		if (raf) cancelAnimationFrame(raf);
@@ -52,7 +32,6 @@ export function ryokuWheelScroll(el: HTMLElement) {
 		const before = el.scrollTop;
 		const next = clamp(before + velocity * frameScale);
 		el.scrollTop = next;
-		markScrolling();
 
 		// Around a 170–230 ms useful tail at 60 Hz, close to Ryoku's move/swap register.
 		velocity *= Math.pow(0.80, frameScale);
@@ -86,27 +65,17 @@ export function ryokuWheelScroll(el: HTMLElement) {
 		// Add an impulse instead of chasing a target. Repeated notches therefore build velocity like
 		// Flickable rather than restarting an ease-to-target curve on every event.
 		velocity = Math.max(-80, Math.min(80, velocity + pixels * 0.22));
-		markScrolling();
 		if (!raf) raf = requestAnimationFrame(kineticFrame);
 	}
 
-	function onNativeScroll() {
-		// Covers touchpad, scrollbar drag, keyboard and programmatic scrolling too.
-		markScrolling();
-	}
-
 	el.addEventListener('wheel', onWheel, { passive: false });
-	el.addEventListener('scroll', onNativeScroll, { passive: true });
 	el.addEventListener('pointerdown', stopKinetic, { passive: true });
 	el.addEventListener('touchstart', stopKinetic, { passive: true });
 	window.addEventListener('keydown', stopKinetic, { passive: true });
 
 	return () => {
 		stopKinetic();
-		if (scrollEndTimer) window.clearTimeout(scrollEndTimer);
-		el.classList.remove('ryo-is-scrolling');
 		el.removeEventListener('wheel', onWheel);
-		el.removeEventListener('scroll', onNativeScroll);
 		el.removeEventListener('pointerdown', stopKinetic);
 		el.removeEventListener('touchstart', stopKinetic);
 		window.removeEventListener('keydown', stopKinetic);

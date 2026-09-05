@@ -24,6 +24,7 @@
 	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
 	import * as api from '$lib/api';
+	import { seekReleaseGuard } from '$lib/seek-drag';
 	import {
 		np,
 		playback,
@@ -98,20 +99,29 @@
 	});
 
 	// Seek: while dragging, hold a local value so incoming mpv position ticks can't yank the thumb
-	// back under the pointer; only invoke the (expensive) seek on release.
+	// back under the pointer; only invoke the (expensive) seek on release. `seekReleaseGuard`
+	// commits the drag for a release WebKit never delivers (see $lib/seek-drag).
 	let seekDrag = $state<number | null>(null);
+	let seekInput: HTMLInputElement | undefined = $state();
 	const shownPosition = $derived(seekDrag ?? playback.position);
 	const seekPct = $derived(playback.duration > 0 ? Math.min(100, Math.max(0, (shownPosition / playback.duration) * 100)) : 0);
+	// A track change ends any drag: the value belonged to the previous track.
+	$effect(() => {
+		void playback.now?.videoId;
+		seekDrag = null;
+	});
 	const SEEK_WAVE = 'M 0 5 Q 1.250 1 2.500 5 Q 3.750 9 5.000 5 Q 6.250 1 7.500 5 Q 8.750 9 10.000 5 Q 11.250 1 12.500 5 Q 13.750 9 15.000 5 Q 16.250 1 17.500 5 Q 18.750 9 20.000 5 Q 21.250 1 22.500 5 Q 23.750 9 25.000 5 Q 26.250 1 27.500 5 Q 28.750 9 30.000 5 Q 31.250 1 32.500 5 Q 33.750 9 35.000 5 Q 36.250 1 37.500 5 Q 38.750 9 40.000 5 Q 41.250 1 42.500 5 Q 43.750 9 45.000 5 Q 46.250 1 47.500 5 Q 48.750 9 50.000 5 Q 51.250 1 52.500 5 Q 53.750 9 55.000 5 Q 56.250 1 57.500 5 Q 58.750 9 60.000 5 Q 61.250 1 62.500 5 Q 63.750 9 65.000 5 Q 66.250 1 67.500 5 Q 68.750 9 70.000 5 Q 71.250 1 72.500 5 Q 73.750 9 75.000 5 Q 76.250 1 77.500 5 Q 78.750 9 80.000 5 Q 81.250 1 82.500 5 Q 83.750 9 85.000 5 Q 86.250 1 87.500 5 Q 88.750 9 90.000 5 Q 91.250 1 92.500 5 Q 93.750 9 95.000 5 Q 96.250 1 97.500 5 Q 98.750 9 100.000 5';
 
 	function onSeekInput(e: Event) {
 		seekDrag = Number((e.target as HTMLInputElement).value);
 	}
-	function onSeekCommit(e: Event) {
-		const v = Number((e.target as HTMLInputElement).value);
+	function commitSeek(v: number) {
 		setPlaybackPosition(v);
 		seekDrag = null;
 		api.seek(v);
+	}
+	function onSeekCommit(e: Event) {
+		commitSeek(Number((e.target as HTMLInputElement).value));
 	}
 
 	const onVolume = (e: Event) => dragVolume(Number((e.target as HTMLInputElement).value));
@@ -306,8 +316,10 @@
 					min="0"
 					max={playback.duration || 0}
 					value={shownPosition}
+					bind:this={seekInput}
 					oninput={onSeekInput}
 					onchange={onSeekCommit}
+					{@attach seekReleaseGuard(() => seekDrag !== null, () => commitSeek(Number(seekInput?.value ?? seekDrag)))}
 					aria-label="Seek"
 				/>
 			</div>

@@ -141,16 +141,6 @@ body::after { content: none !important; }
 }
 
 
-.ryo-main.ryo-is-scrolling .group img,
-.ryo-main.ryo-is-scrolling .group:hover img {
-  transition: none !important;
-  transform: none !important;
-}
-.ryo-main.ryo-is-scrolling .group button[aria-label="Play"] {
-  opacity: 0 !important;
-  transform: none !important;
-  transition: none !important;
-}
 
 
 .content-in {
@@ -1834,8 +1824,6 @@ html {
 .ryo-home-body .group:hover img,
 .ryo-page-scroll .group:hover img,
 .ryo-library-body .group:hover img { transform:scale(1.018) !important; }
-.ryo-main.ryo-is-scrolling .group img,
-.ryo-main.ryo-is-scrolling .group:hover img { transform:none !important; transition:none !important; }
 .ryo-home-body [class*="shadow"],
 .ryo-page-scroll [class*="shadow"],
 .ryo-library-body [class*="shadow"] { box-shadow:none !important; }
@@ -2286,8 +2274,6 @@ html[data-ryoku-reduced-motion="true"] .ryo-lyrics-resolving-foot i::after { ani
 .ryo-home-body .group\/card,
 .ryo-home-body .group\/pick { box-shadow: none !important; }
 .ryo-home-body img { backface-visibility: hidden; }
-.ryo-is-scrolling .ryo-familiar-art img,
-.ryo-is-scrolling .ryo-search-inspector-art img { animation: none !important; }
 
 
 .ryo-familiar-surface { min-height: 314px; grid-template-columns: minmax(250px,.72fr) minmax(470px,1.28fr); }
@@ -4610,9 +4596,6 @@ html[data-ryoku-reduced-motion="true"] .ryo-lyrics-resolving-foot i::after { ani
 /* Remove the only remaining expensive backdrop blur in regular playback UI. */
 .ryo-lyrics-return { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
 
-/* During active scrolling, trade decorative polish for frame stability; restore immediately after. */
-.ryo-is-scrolling img { transition:none !important; }
-.ryo-is-scrolling .ryo-art-wash { will-change:auto !important; }
 
 /* Hidden/background windows should not keep decorative transitions alive. */
 @media (prefers-reduced-motion:reduce) {

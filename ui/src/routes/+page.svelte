@@ -215,17 +215,14 @@
 		}
 	}
 
-	// Home uses the layout's <main> as its scroll container. The observer only marks active
-	// scrolling and handles shallow-window resize correction.
+	// Home uses the layout's <main> as its scroll container. The observer only handles
+	// shallow-window resize correction. It used to also toggle a scrolling class on <main> on
+	// every scroll event and 110 ms after the last one; with rules keyed on that class reaching
+	// every <img> and every promoted `.ryo-art-wash` layer, each toggle was a style recalc of the
+	// whole page plus compositing-layer churn, twice per wheel notch: the scroll lag itself.
 	function watchScroll(node: HTMLElement) {
 		const el = node.closest('main');
 		if (!el) return;
-		let settle: number | undefined;
-		const onScroll = () => {
-			el.classList.add('ryo-is-scrolling');
-			if (settle) window.clearTimeout(settle);
-			settle = window.setTimeout(() => el.classList.remove('ryo-is-scrolling'), 110);
-		};
 
 
 		/*
@@ -249,13 +246,9 @@
 			if (changed && el.scrollTop > 0 && el.scrollTop < 320) el.scrollTop = 0;
 		});
 
-		el.addEventListener('scroll', onScroll, { passive: true });
 		resize.observe(el);
 		return () => {
-			el.removeEventListener('scroll', onScroll);
 			resize.disconnect();
-			if (settle) window.clearTimeout(settle);
-			el.classList.remove('ryo-is-scrolling');
 		};
 	}
 
