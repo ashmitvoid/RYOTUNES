@@ -22,6 +22,22 @@ paru -S ryotunes-bin
 
 This command will become usable after the AUR package is published.
 
+## Native QML client (preview)
+
+Alongside the Tauri application, the package ships a native [Quickshell](https://quickshell.org) client that talks to the same `ryotunesd` daemon. It installs to `/usr/share/ryotunes/client` and is launched by the `ryotunes-qml` wrapper (a `Ryotunes (QML)` desktop entry is also installed). Because Quickshell resolves `qs -c NAME` only from `$XDG_CONFIG_HOME/quickshell/NAME`, the wrapper runs the packaged tree by explicit path:
+
+```bash
+ryotunes-qml            # == qs -p /usr/share/ryotunes/client
+```
+
+It needs the optional `quickshell` dependency and the Ryoku QML runtime (`Ryoku.Ui.Singletons`). To make the daemon's tray "Show" and the second-launch `show` path open this client instead of the Tauri app, export `RYOTUNES_CLIENT=qml` in the daemon's environment:
+
+```bash
+systemctl --user set-environment RYOTUNES_CLIENT=qml   # or add it to ryotunesd.service
+```
+
+With `RYOTUNES_CLIENT` unset (or any other value) the daemon keeps launching the Tauri `ryotunes` binary.
+
 ## Build from source
 
 Developers can build the repository directly. On Arch-based systems you need the normal Rust/Tauri frontend toolchain plus the runtime dependencies listed in `packaging/arch/PKGBUILD`.

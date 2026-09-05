@@ -17,6 +17,9 @@ depends=(
   'hicolor-icon-theme'
   'xdg-utils'
 )
+optdepends=(
+  'quickshell: native QML client (ryotunes-qml); set RYOTUNES_CLIENT=qml for the daemon to launch it'
+)
 makedepends=(
   'base-devel'
   'cargo'
@@ -68,6 +71,15 @@ package() {
   install -Dm755 target/release/ryotunes-sync "$pkgdir/usr/bin/ryotunes-sync"
   install -Dm755 target/release/ryotunesd "$pkgdir/usr/bin/ryotunesd"
   install -Dm755 target/release/ryotunes-cli "$pkgdir/usr/bin/ryotunes-cli"
+  install -Dm755 packaging/linux/ryotunes-qml "$pkgdir/usr/bin/ryotunes-qml"
+  install -Dm644 packaging/linux/ryotunes-qml.desktop "$pkgdir/usr/share/applications/ryotunes-qml.desktop"
+  # Native QML client, run by Quickshell via `qs -p /usr/share/ryotunes/client` (the ryotunes-qml
+  # launcher); ship the whole config tree minus the QtTest sources, world-readable.
+  install -dm755 "$pkgdir/usr/share/ryotunes"
+  cp -r client "$pkgdir/usr/share/ryotunes/client"
+  rm -rf "$pkgdir/usr/share/ryotunes/client/tests"
+  find "$pkgdir/usr/share/ryotunes/client" -type d -exec chmod 755 {} +
+  find "$pkgdir/usr/share/ryotunes/client" -type f -exec chmod 644 {} +
   install -Dm644 packaging/linux/ryotunesd.socket "$pkgdir/usr/lib/systemd/user/ryotunesd.socket"
   install -Dm644 packaging/linux/ryotunesd.service "$pkgdir/usr/lib/systemd/user/ryotunesd.service"
   install -Dm644 packaging/linux/ryotunes.desktop "$pkgdir/usr/share/applications/ryotunes.desktop"

@@ -95,13 +95,20 @@ impl Tray for RyotunesTray {
 
 /// The daemon's "come back" path, shared by the tray (Show / left-click) and the `show` socket
 /// method (a second `ryotunesd` launch). A subscribed client is told to raise its window; with no
-/// client listening the client launcher is spawned detached — for now `/usr/bin/ryotunes` (the
-/// Tauri app), which phase 4 repoints at the QML client.
+/// client listening the client launcher is spawned detached. `RYOTUNES_CLIENT=qml` selects the
+/// native Quickshell client (`ryotunes-qml`); anything else keeps the Tauri app (`ryotunes`).
 pub fn show(sink: &Arc<SocketSink>) {
     if sink.subscriber_count() > 0 {
         sink.emit("show", Value::Null);
-    } else if let Err(e) = std::process::Command::new("ryotunes").spawn() {
-        tracing::warn!(error = %e, "`show` could not launch the client");
+        return;
+    }
+    let client = if std::env::var("RYOTUNES_CLIENT").as_deref() == Ok("qml") {
+        "ryotunes-qml"
+    } else {
+        "ryotunes"
+    };
+    if let Err(e) = std::process::Command::new(client).spawn() {
+        tracing::warn!(error = %e, client, "`show` could not launch the client");
     }
 }
 
