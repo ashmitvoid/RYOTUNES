@@ -199,7 +199,7 @@ TestCase {
     function test_thumb_rewrites_sizes() {
         compare(App.Style.thumb("https://x/a=w120-h120-l90", 544), "https://x/a=w544-h544-l90");
         compare(App.Style.thumb("https://x/a=s200", 64), "https://x/a=s64");
-        compare(App.Style.thumb("/home/n/cover.jpg", 64), "file:///home/n/cover.jpg");
+        compare(App.Style.thumb("/music/cover.jpg", 64), "file:///music/cover.jpg");
         compare(App.Style.thumb("", 64), undefined);
     }
     function test_fmtTime() {
