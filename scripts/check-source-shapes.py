@@ -167,15 +167,17 @@ for name, required in checks.items():
             rel = path.relative_to(ROOT)
             failures.append(f'{rel}:{line}: {name} missing {", ".join(sorted(missing))}')
 
-commands = (ROOT / 'src-tauri/src/commands.rs').read_text()
-match = re.search(r'const UI_SETTINGS:\s*\[&str;\s*(\d+)\]\s*=\s*\[(.*?)\];', commands, re.S)
+# UI_SETTINGS is the single source of the renderer-visible setting keys; it lives in the core so the
+# Tauri host and the daemon share one list.
+state_src = (ROOT / 'crates/core/src/state.rs').read_text()
+match = re.search(r'pub const UI_SETTINGS:\s*\[&str;\s*(\d+)\]\s*=\s*\[(.*?)\];', state_src, re.S)
 if not match:
-    failures.append('src-tauri/src/commands.rs: could not parse UI_SETTINGS')
+    failures.append('crates/core/src/state.rs: could not parse UI_SETTINGS')
 else:
     declared = int(match.group(1))
     actual = len(re.findall(r'"[^"\\]*(?:\\.[^"\\]*)*"', match.group(2)))
     if declared != actual:
-        failures.append(f'src-tauri/src/commands.rs: UI_SETTINGS declares {declared}, contains {actual}')
+        failures.append(f'crates/core/src/state.rs: UI_SETTINGS declares {declared}, contains {actual}')
 
 if failures:
     print('\n'.join(failures), file=sys.stderr)

@@ -13,7 +13,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::state::{
     is_local_playlist_id, is_smart_playlist_id, AppState, LOCAL_PLAYLIST_PREFIX, ON_REPEAT_ID,
     ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS, RECENTLY_PLAYED_ID, RECENTLY_PLAYED_WINDOW_SECS,
-    REDISCOVER_ID, REDISCOVER_OLDER_THAN_SECS, SMART_PLAYLIST_LIMIT,
+    REDISCOVER_ID, REDISCOVER_OLDER_THAN_SECS, SMART_PLAYLIST_LIMIT, UI_SETTINGS,
 };
 
 type St<'a> = State<'a, Arc<AppState>>;
@@ -329,50 +329,23 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
     Ok(state.queue_snapshot().await)
 }
 
-/// Settings the UI is allowed to read *and write*. Session/auth material (`session_cookie`,
-/// `selected_identity_json`, `data_sync_id`, `account_json`, `account_selection_pending`,
-/// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
-/// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
-/// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 14] = [
-    "volume",
-    "proxy",
-    "quality",
-    "enable_history",
-    "disabled_stream_clients",
-    "discord_rpc",
-    "discord_presence_name",
-    "close_to_tray",
-    "autostart",
-    "autoplay",
-    "prevent_duplicates",
-    "lyrics_boidu",
-    "ui_scale",
-    "low_resource_mode",
-];
-
 #[tauri::command]
 pub async fn get_settings(
     app: tauri::AppHandle,
     state: St<'_>,
 ) -> Result<serde_json::Value, String> {
-    let mut map: serde_json::Map<String, serde_json::Value> = state
-        .db
-        .all_settings()
-        .into_iter()
-        .filter(|(k, _)| UI_SETTINGS.contains(&k.as_str()))
-        .map(|(k, v)| (k, serde_json::Value::String(v)))
-        .collect();
+    // The UI-visible subset is computed in the core so the daemon serves the exact same shape.
+    let mut snapshot = state.settings_snapshot();
 
     // The OS is authoritative for autostart. Reconcile the persisted UI value whenever Settings
     // reads it so a deleted/failed desktop registration can never leave a misleading ON switch.
     use tauri_plugin_autostart::ManagerExt;
-    if let Ok(enabled) = app.autolaunch().is_enabled() {
+    if let (Ok(enabled), Some(map)) = (app.autolaunch().is_enabled(), snapshot.as_object_mut()) {
         let value = if enabled { "true" } else { "false" };
         state.db.set_setting("autostart", value);
         map.insert("autostart".into(), serde_json::Value::String(value.into()));
     }
-    Ok(serde_json::Value::Object(map))
+    Ok(snapshot)
 }
 
 /// Resolve the same live Material-role chain used by Ryoku.Ui.Singletons.Tokens.

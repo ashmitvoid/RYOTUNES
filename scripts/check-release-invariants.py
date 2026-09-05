@@ -336,8 +336,9 @@ req('adopt_previous_backup' in package_builder and '/var/lib/ryotunes-v2.3/stock
 req("conflicts=('ryotunes-v2.3'" in package_builder,
     'v2.4 package does not declare the previous custom package generation as a conflict')
 
-# Frontend settings whitelist stays synchronized with Rust command boundary.
-ui_block = commands.split('const UI_SETTINGS:',1)[1].split('];',1)[0]
+# Frontend settings whitelist stays synchronized with the Rust command boundary. UI_SETTINGS lives
+# in the core (shared by the Tauri host and the daemon).
+ui_block = state.split('pub const UI_SETTINGS:',1)[1].split('];',1)[0]
 allowed = set(re.findall(r'"([^"]+)"', ui_block))
 written = set()
 for p in (root/'ui/src').rglob('*'):

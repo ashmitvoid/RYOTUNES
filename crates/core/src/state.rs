@@ -38,6 +38,29 @@ pub const REDISCOVER_OLDER_THAN_SECS: i64 = 14 * 24 * 60 * 60;
 pub const SMART_PLAYLIST_LIMIT: usize = 40;
 pub const LOCAL_PLAYLIST_PREFIX: &str = "RYOTUNES_LOCAL_PLAYLIST:";
 
+/// Settings the UI is allowed to read *and write*. Session/auth material (`session_cookie`,
+/// `selected_identity_json`, `data_sync_id`, `account_json`, `account_selection_pending`,
+/// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
+/// into the renderer: they'd otherwise ship the login credential out on every open, and the
+/// renderer can't overwrite them either. Lives here so `settings_snapshot`, the Tauri host and the
+/// daemon share one list.
+pub const UI_SETTINGS: [&str; 14] = [
+    "volume",
+    "proxy",
+    "quality",
+    "enable_history",
+    "disabled_stream_clients",
+    "discord_rpc",
+    "discord_presence_name",
+    "close_to_tray",
+    "autostart",
+    "autoplay",
+    "prevent_duplicates",
+    "lyrics_boidu",
+    "ui_scale",
+    "low_resource_mode",
+];
+
 pub fn is_local_playlist_id(id: &str) -> bool {
     id.starts_with(LOCAL_PLAYLIST_PREFIX)
 }
@@ -722,6 +745,21 @@ impl AppState {
             .unwrap_or_else(|| serde_json::json!({}));
         v["signedIn"] = serde_json::json!(self.it.is_logged_in());
         v
+    }
+
+    /// The UI-visible settings as a JSON object: every [`UI_SETTINGS`] key present in the DB,
+    /// value as a string. This is what `get_settings` returns; the Tauri host layers its OS
+    /// autostart reconciliation on top, and the daemon serves it verbatim. Kept here so the two
+    /// hosts can never disagree about which settings the renderer may see.
+    pub fn settings_snapshot(&self) -> serde_json::Value {
+        let map: serde_json::Map<String, serde_json::Value> = self
+            .db
+            .all_settings()
+            .into_iter()
+            .filter(|(k, _)| UI_SETTINGS.contains(&k.as_str()))
+            .map(|(k, v)| (k, serde_json::Value::String(v)))
+            .collect();
+        serde_json::Value::Object(map)
     }
 
     async fn resolve(&self, video_id: &str, is_upload: bool) -> Result<PlaybackData, ResolveError> {
