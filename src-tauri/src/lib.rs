@@ -490,6 +490,8 @@ pub fn run() {
             commands::discord_status,
             commands::ryoku_theme_tokens,
             commands::set_setting,
+            commands::get_personal,
+            commands::set_personal,
             commands::get_stream_clients,
             commands::clear_caches,
             commands::get_account,

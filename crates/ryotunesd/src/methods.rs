@@ -209,6 +209,11 @@ impl Dispatch for Methods {
             "get_settings" => ok(st.settings_snapshot()),
             "discord_status" => ok(st.discord_status()),
             "set_setting" => set_setting(st, &params),
+            "get_personal" => ok(json!({ "personal": st.personal() })),
+            "set_personal" => {
+                st.set_personal(arg::<Value>(&params, "personal")?).map_err(err)?;
+                null()
+            }
             "get_stream_clients" => {
                 let mut v = vec![innertube::MAIN_CLIENT.to_string()];
                 v.extend(innertube::STREAM_FALLBACK_ORDER.iter().map(|s| s.to_string()));

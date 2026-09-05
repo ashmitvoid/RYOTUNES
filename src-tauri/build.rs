@@ -34,6 +34,8 @@ const APP_COMMANDS: &[&str] = &[
     "discord_status",
     "ryoku_theme_tokens",
     "set_setting",
+    "get_personal",
+    "set_personal",
     "get_stream_clients",
     "clear_caches",
     "get_account",

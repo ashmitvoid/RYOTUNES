@@ -416,6 +416,21 @@ pub async fn set_setting(
     Ok(())
 }
 
+/// The personal store (Home Shortcuts, sidebar pins, play recency, Home arrangement). Wrapped in
+/// `{ personal }` so a client tells "nothing saved yet" (`{}`) apart from a transport failure. The
+/// blob's shape and reducers live in the clients; the backend only persists it.
+#[tauri::command]
+pub async fn get_personal(state: St<'_>) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({ "personal": state.personal() }))
+}
+
+/// Replace the personal store and emit `personal-changed` to every window (so the mini follows the
+/// main), rejecting a non-object or an oversized blob inside `AppState::set_personal`.
+#[tauri::command]
+pub async fn set_personal(state: St<'_>, personal: serde_json::Value) -> Result<(), String> {
+    state.set_personal(personal)
+}
+
 /// The streamable client keys the orchestrator tries, for the "disabled clients" setting. Names
 /// come from the innertube crate so the UI stays free of YouTube-shaped identity strings.
 #[tauri::command]

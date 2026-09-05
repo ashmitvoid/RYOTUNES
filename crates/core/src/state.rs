@@ -61,6 +61,16 @@ pub const UI_SETTINGS: [&str; 14] = [
     "low_resource_mode",
 ];
 
+/// Where the personal store (Home Shortcuts, sidebar pins, play recency, Home arrangement) lives:
+/// one JSON blob under this settings key. It moved off the Svelte app's browser `localStorage`,
+/// which a native client can't read, so it belongs to the daemon like any other user state. Not in
+/// [`UI_SETTINGS`] on purpose: it is written through the dedicated `set_personal` method (which
+/// validates and emits `personal-changed`), never the generic `set_setting` allowlist.
+pub const PERSONAL_JSON_KEY: &str = "personal_json";
+/// A ceiling so a corrupt or hostile client can't wedge the store with an unbounded blob. Real
+/// stores are a few KiB; a MiB is orders of magnitude of headroom and still bounds the write.
+const MAX_PERSONAL_BYTES: usize = 1024 * 1024;
+
 pub fn is_local_playlist_id(id: &str) -> bool {
     id.starts_with(LOCAL_PLAYLIST_PREFIX)
 }
@@ -760,6 +770,24 @@ impl AppState {
             .map(|(k, v)| (k, serde_json::Value::String(v)))
             .collect();
         serde_json::Value::Object(map)
+    }
+
+    /// The stored personal blob (Home Shortcuts, pins, play recency, Home arrangement), or `{}`
+    /// when nothing has been saved yet. The daemon only stores it; its shape and reducers live in
+    /// the clients (`ui/src/lib/personal.ts`, `client/lib/personal.js`).
+    pub fn personal(&self) -> serde_json::Value {
+        read_personal(&self.db)
+    }
+
+    /// Replace the personal blob. Rejects a non-object or a blob over [`MAX_PERSONAL_BYTES`] so a
+    /// corrupt client can't wedge the store, persists it under [`PERSONAL_JSON_KEY`], then emits
+    /// `personal-changed` with the blob so every other client (the mini window, a second shell)
+    /// follows the same store.
+    pub fn set_personal(&self, blob: serde_json::Value) -> Result<(), String> {
+        let json = validate_personal_blob(&blob)?;
+        self.db.set_setting(PERSONAL_JSON_KEY, &json);
+        self.emit("personal-changed", &blob);
+        Ok(())
     }
 
     async fn resolve(&self, video_id: &str, is_upload: bool) -> Result<PlaybackData, ResolveError> {
@@ -3414,6 +3442,29 @@ pub fn saved_volume(db: &Db) -> i64 {
     v.filter(|v| (0..=100).contains(v)).unwrap_or(100)
 }
 
+/// Read the personal blob out of the DB, degrading anything that is missing, unparseable, or not a
+/// JSON object to `{}`. The clients hydrate tolerantly on top of this, so a corrupt store costs the
+/// user their shortcuts, never a crash.
+fn read_personal(db: &Db) -> serde_json::Value {
+    db.get_setting(PERSONAL_JSON_KEY)
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .filter(serde_json::Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+/// Validate a personal blob and return its serialized form. Rejects a non-object (the store is one
+/// keyed record, never a bare array/scalar) and anything over [`MAX_PERSONAL_BYTES`].
+fn validate_personal_blob(blob: &serde_json::Value) -> Result<String, String> {
+    if !blob.is_object() {
+        return Err("personal store must be a JSON object".into());
+    }
+    let json = serde_json::to_string(blob).map_err(|e| e.to_string())?;
+    if json.len() > MAX_PERSONAL_BYTES {
+        return Err(format!("personal store too large: {} bytes (max {MAX_PERSONAL_BYTES})", json.len()));
+    }
+    Ok(json)
+}
+
 /// Per-track loudness gain (dB) from YouTube's `loudnessDb`. Attenuate
 /// only toward reference loudness: loud masters get pulled down, quieter tracks aren't boosted,
 /// so there's no clipping and no limiter to add.
@@ -3636,9 +3687,39 @@ mod tests {
     use super::{
         append_page, backfill_metadata, drop_duplicates, enqueue_at, format_duration,
         guest_insert_index, is_mix, loudness_gain, merge_radio, next_index, parse_duration_ms,
-        persist_fingerprint, queue_fingerprint, radio_seed_for, shuffle_new_queue,
-        shuffle_upcoming, splice_radio_into, unshuffled, upcoming_queued, QueueState, RepeatMode,
+        persist_fingerprint, queue_fingerprint, radio_seed_for, read_personal, shuffle_new_queue,
+        shuffle_upcoming, splice_radio_into, unshuffled, upcoming_queued, validate_personal_blob,
+        QueueState, RepeatMode, PERSONAL_JSON_KEY,
     };
+    use crate::db::Db;
+
+    #[test]
+    fn personal_round_trips_and_rejects_bad_blobs() {
+        let db = Db::open(std::path::Path::new(":memory:")).unwrap();
+        // Nothing saved yet reads as an empty object, not null or an error.
+        assert_eq!(read_personal(&db), serde_json::json!({}));
+        // A real store round-trips through SQLite byte for byte.
+        let blob = serde_json::json!({
+            "picks": [{ "id": "VL123", "kind": "playlist", "title": "Mix", "lastUsedAt": 42 }],
+            "pins": ["VL123"],
+            "recent": { "VL123": { "id": "VL123", "kind": "playlist", "at": 99 } },
+            "home": { "order": ["@recent", "@familiar"], "hidden": [], "seen": ["Listen again"] }
+        });
+        db.set_setting(PERSONAL_JSON_KEY, &validate_personal_blob(&blob).unwrap());
+        assert_eq!(read_personal(&db), blob);
+        // A non-object is refused: the store is one keyed record, never a bare array or scalar.
+        assert!(validate_personal_blob(&serde_json::json!([1, 2, 3])).is_err());
+        assert!(validate_personal_blob(&serde_json::json!("nope")).is_err());
+        assert!(validate_personal_blob(&serde_json::json!(7)).is_err());
+        // Over a MiB is refused so a corrupt client can't wedge the store.
+        let huge = serde_json::json!({ "x": "y".repeat(1024 * 1024) });
+        assert!(validate_personal_blob(&huge).is_err());
+        // A stored value that somehow isn't an object degrades to {} rather than propagating.
+        db.set_setting(PERSONAL_JSON_KEY, "[1,2,3]");
+        assert_eq!(read_personal(&db), serde_json::json!({}));
+        db.set_setting(PERSONAL_JSON_KEY, "not json at all");
+        assert_eq!(read_personal(&db), serde_json::json!({}));
+    }
 
     #[test]
     fn queue_fingerprint_tracks_the_rows_not_their_metadata() {
