@@ -366,3 +366,31 @@ Found in Task 4: Shortcuts, "Jump back in", the artist index, local saves, pins 
 - Spec coverage (phase 3): 5.1 runtime and singletons (Tasks 1-2), 5.2 structure and rules (file structure, Global Constraints, Tasks 3-7), 5.3 mini (Task 7), the `show` path of 4.4 (Task 8), verification of section 9 (Task 9).
 - Placeholders: Tasks 4-7 reference the Svelte files to port rather than restating them; each names its data methods, list types and the behaviour rules that are easy to get wrong (debounce, timers, drag). Task 8 records the Quickshell `-c` resolution constraint and the launcher decision inline.
 - Type consistency: `Daemon.call` returns a Promise everywhere; `Playback.seekDrag` is NaN-or-number in Task 2 and consumed by `PlayerBar` in Task 3 and `MiniPlayer` in Task 7; `Style.thumb(url, px)` signature matches `thumb.ts`.
+
+
+## Measured 2026-09-05 (after Task 8, commit ba8dd79)
+
+Same instruments as the Tauri baseline (`top` process CPU over 7.5 s, PSS from smaps_rollup,
+ydotool wheel input, grim screenshots). Window 1008x1163 logical, 1.25x scale, RTX 4060 dGPU pinned.
+
+| State | qs (client) | ryotunesd | Tauri app (same state, 2026-09-04) |
+|---|---|---|---|
+| idle, window open, paused | 0.1% / 261 MB | 0.2% / 323 MB | 2.1% / 178 MB + 3 WebKit procs |
+| playing, idle on a page | 0.7% / 258 MB | 2.1% / 322 MB | 2-3% + 6% WebKitWebProcess |
+| Home scroll, 60 notches | 0.8% / 252 MB | 2.1% | 60% WebKitWebProcess + 16% host |
+| Radio page scroll, 60 notches | 12.7% / 264 MB | 2.1% | (not measured) |
+| 707-track playlist scroll, 60 notches | 20% / 330 MB | 2.3% | (not measured) |
+
+`QSG_RENDER_TIMING=1` on the 707-track scroll: frames render in 0-2 ms (polish 0-1, render 0-1),
+frame delta 8-19 ms while flicking, 300 ms at idle (the position tick). The 20% is the frame
+cadence at the display's refresh during a continuous flick, not per-row work: rescrolling over
+already-loaded rows costs the same, wheel at the bounds (no motion) costs 0.9%. The daemon's two
+hidden WebKit helpers (cipher, PoToken) stay at 0.0% / 90 + 76 MB throughout.
+
+Commit ba8dd79 replaced the per-icon Image+MultiEffect layer with QtQuick.Shapes geometry
+(`lib/glyphs.js` baked from `client/icons`) and the three-pass artwork mask with a single
+rounded-rect SDF shader layer (`shaders/rounded.frag`); the long-list figure did not move, the
+list's cost is the flick itself.
+
+Open: real launch through `/usr/bin/ryotunes-qml` after makepkg; tray Show / second launch with
+`RYOTUNES_CLIENT=qml` needs the rebuilt daemon (Task 8 changed `tray.rs::show`).
