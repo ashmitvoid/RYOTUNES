@@ -385,6 +385,12 @@ export const clearCaches = () => invoke<void>('clear_caches');
 /** Open an http(s) link in the real browser, never in the webview itself. */
 export const openExternal = (url: string) => invoke<void>('open_external', { url });
 
+// --- personal store (Home Shortcuts, sidebar pins, play recency; see personal.ts) -------------
+/** The stored blob, wrapped as `{ personal }`; `personal` is `{}` when nothing is saved yet. */
+export const getPersonal = () => invoke<{ personal: unknown }>('get_personal');
+/** Replace the stored blob. The backend rejects a non-object or a blob over 1 MiB. */
+export const setPersonal = (personal: unknown) => invoke<void>('set_personal', { personal });
+
 // --- auth (authentication flow) ---------------------------------------------------------------------
 export const getAccount = () => invoke<Account>('get_account');
 export const getAccountIdentities = () =>

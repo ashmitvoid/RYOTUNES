@@ -409,44 +409,58 @@ export const removeLocalFolder = (path: string) => runLocal(() => api.removeLoca
 // --- Personalization: the Shortcuts grid, sidebar pins, play recency (see personal.ts) ----------
 // The Shortcuts grid holds what the user puts in it, plus the one tile the app suggests (On
 // Repeat, via `seedOnRepeatPick`). See `personal.ts`.
-// localStorage rather than SQLite: only the webview ever reads this, so a table + commands + a
-// `UI_SETTINGS` allowlist entry would buy nothing. Loaded at module scope (guarded like the layout's
-// `initAppearance`) so the sidebar and home grid render sorted on the very first paint.
-// Note: move to db.rs if it ever needs to be account-scoped or readable outside the webview.
+// The store lives in the daemon now (`AppState::{personal,set_personal}`), not localStorage: a
+// native client can't read this webview's browser storage, and this is user state like any other.
+// Loaded from `get_personal` on startup and saved back through `set_personal` (debounced, below).
 const PERSONAL_KEY = 'ryotunes:personal';
 
 export const personal = $state<Personal>(pl.empty());
 
-if (browser) {
-	try {
-		// Ryotunes uses a stable product namespace. If an older local build used a different
-		// product-prefixed key, migrate the only `:personal` payload in this webview rather than
-		// making a visual rebrand erase the user's shortcuts and Home arrangement.
-		let raw = localStorage.getItem(PERSONAL_KEY);
-		if (!raw) {
-			const legacyKey = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i))
-				.find((k): k is string => !!k && k !== PERSONAL_KEY && k.endsWith(':personal'));
-			if (legacyKey) {
-				raw = localStorage.getItem(legacyKey);
-				if (raw) {
-					localStorage.setItem(PERSONAL_KEY, raw);
-					localStorage.removeItem(legacyKey);
-				}
-			}
-		}
-		Object.assign(personal, pl.hydrate(JSON.parse(raw ?? 'null')));
-	} catch {
-		// Unreadable blob — start clean rather than break startup.
-	}
+/** Every local `:personal` copy this webview still holds — the stable key plus any older
+ *  product-prefixed one — so the one-time migration can read and then delete them. */
+function localPersonalKeys(): string[] {
+	return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(
+		(k): k is string => !!k && k.endsWith(':personal')
+	);
 }
 
-function savePersonal() {
+/**
+ * Load the store from the daemon. First launch after the move: if the daemon has nothing yet but
+ * this webview still holds the old localStorage blob, hydrate that, push it up once, then drop the
+ * local copies so the daemon is the single source from then on.
+ */
+async function loadPersonal() {
 	if (!browser) return;
 	try {
-		localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal));
+		const { personal: blob } = await api.getPersonal();
+		if (blob && typeof blob === 'object' && Object.keys(blob).length > 0) {
+			Object.assign(personal, pl.hydrate(blob));
+			return;
+		}
+		const keys = localPersonalKeys();
+		const key = keys.includes(PERSONAL_KEY) ? PERSONAL_KEY : keys[0];
+		const raw = key ? localStorage.getItem(key) : null;
+		if (!raw) return;
+		Object.assign(personal, pl.hydrate(JSON.parse(raw)));
+		await api.setPersonal($state.snapshot(personal));
+		for (const k of keys) localStorage.removeItem(k);
 	} catch {
-		// Quota or a locked store: personalization is best-effort, never fatal.
+		// Daemon unreachable or an unreadable blob — start clean rather than break startup.
 	}
+}
+void loadPersonal();
+
+// One `set_personal` per mutation would be a socket round-trip on every card click and track
+// change; coalesce a burst into a single write 300 ms after it settles.
+let personalSaveTimer: number | undefined;
+function savePersonal() {
+	if (!browser) return;
+	if (personalSaveTimer !== undefined) window.clearTimeout(personalSaveTimer);
+	personalSaveTimer = window.setTimeout(() => {
+		void api.setPersonal($state.snapshot(personal)).catch(() => {
+			// Best-effort: a failed save is retried on the next mutation.
+		});
+	}, 300);
 }
 
 /** Add to Shortcuts (evicting the tile gone longest unplayed when the grid is full). */
