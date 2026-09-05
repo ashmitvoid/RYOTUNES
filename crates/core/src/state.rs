@@ -12,11 +12,11 @@ use innertube::{
 };
 use listen_protocol::{Playback, PlaybackKind, Track};
 use player::Player;
-use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 use crate::db::{now_secs, Db};
 use crate::discord::DiscordHandle;
+use crate::host::{EventSink, LoginFlow, Paths};
 use crate::listentogether::{LtSession, SyncCommand};
 use crate::media::MediaHandle;
 use crate::orchestrator::{Orchestrator, PlaybackData, PlaybackPing, ResolveError};
@@ -51,12 +51,12 @@ pub struct AppState {
     pub clients: Clients,
     pub player: Player,
     pub db: Arc<Db>,
-    pub app: AppHandle,
+    pub sink: Arc<dyn EventSink>,
+    pub login: Arc<dyn LoginFlow>,
+    pub paths: Paths,
     pub orchestrator: Arc<Orchestrator>,
     /// Listen Together session (session protocol). Drives host broadcasts + guest gating.
     pub lt: Arc<LtSession>,
-    /// mpv's on-disk audio cache directory, wiped by the Settings → Clear caches action.
-    cache_dir: std::path::PathBuf,
     /// OS media integration (MPRIS/SMTC/NowPlaying). `None` if it failed to init. fail-soft policy.
     media: Option<MediaHandle>,
     /// Discord rich presence. Fed the same track/playback changes as `media`; gated on the
@@ -236,7 +236,7 @@ fn auth_selection_pending(db: &Db) -> bool {
 }
 
 /// Startup compatibility: prefer the canonical model, then fall back to the pre-switcher setting.
-pub(crate) fn persisted_data_sync_id(db: &Db) -> Option<String> {
+pub fn persisted_data_sync_id(db: &Db) -> Option<String> {
     selected_identity_from_db(db)
         .and_then(|identity| identity.data_sync_id)
         .or_else(|| db.get_setting("data_sync_id").filter(|id| !id.is_empty()))
@@ -325,10 +325,11 @@ impl AppState {
         clients: Clients,
         player: Player,
         db: Arc<Db>,
-        app: AppHandle,
+        sink: Arc<dyn EventSink>,
+        login: Arc<dyn LoginFlow>,
+        paths: Paths,
         orchestrator: Arc<Orchestrator>,
         lt: Arc<LtSession>,
-        cache_dir: std::path::PathBuf,
         media: Option<MediaHandle>,
         discord: Option<DiscordHandle>,
         lastfm: crate::lastfm::LastfmHandle,
@@ -339,10 +340,11 @@ impl AppState {
             clients,
             player,
             db,
-            app,
+            sink,
+            login,
+            paths,
             orchestrator,
             lt,
-            cache_dir,
             media,
             discord,
             lastfm,
@@ -358,6 +360,15 @@ impl AppState {
             last_persisted_fingerprint: AtomicU64::new(0),
             stop_after_current: AtomicBool::new(false),
             low_resource_mode: AtomicBool::new(low_resource_mode),
+        }
+    }
+
+    /// Serialize `payload` and fan it out through the host's event sink. Replaces the old
+    /// per-window emit; a payload that will not serialize is logged, never panicked.
+    pub fn emit<T: serde::Serialize>(&self, event: &'static str, payload: T) {
+        match serde_json::to_value(payload) {
+            Ok(v) => self.sink.emit(event, v),
+            Err(e) => tracing::warn!(event, error = %e, "event payload not serializable"),
         }
     }
 
@@ -387,7 +398,7 @@ impl AppState {
     /// discovers every server-selectable identity. A persisted matching identity wins over
     /// Google's current default; a new multi-channel login pauses before finalization and asks the
     /// UI to choose.
-    pub async fn sign_in(&self, cookie: String) -> Result<SignInOutcome, String> {
+    pub(crate) async fn apply_cookie(&self, cookie: String) -> Result<SignInOutcome, String> {
         let cookie = cookie.trim().to_owned();
         if innertube::cookie_sapisid(&cookie).is_none() {
             return Err("Sign-in didn't complete — try signing in again.".into());
@@ -541,7 +552,7 @@ impl AppState {
                 error.to_string()
             })?;
             self.persist_visitor_data(active_visitor_data.as_deref());
-            let _ = self.app.emit("account-selection-required", ());
+            self.emit("account-selection-required", ());
             return Ok(SignInOutcome::SelectionRequired);
         }
 
@@ -650,7 +661,7 @@ impl AppState {
         self.persist_visitor_data(visitor_data);
         self.forget_playlist_index();
         self.it.set_data_sync_id(selected.data_sync_id.clone());
-        let _ = self.app.emit("auth-changed", &account);
+        self.emit("auth-changed", &account);
         Ok(account)
     }
 
@@ -687,7 +698,7 @@ impl AppState {
         self.db.delete_setting("session_cookie");
         self.forget_playlist_index();
         let _ = self.db.clear_auth_identity();
-        let _ = self.app.emit("auth-changed", serde_json::json!({ "signedIn": false }));
+        self.emit("auth-changed", serde_json::json!({ "signedIn": false }));
     }
 
     /// Current account for the UI. New installs derive it from the canonical selected identity;
@@ -726,7 +737,7 @@ impl AppState {
                 // so — the UI drops the row (and any Shortcuts tile) on the spot instead of
                 // leaving something that can only fail again.
                 let removed = crate::local::forget_missing(&self.db, path);
-                let _ = self.app.emit("local-changed", serde_json::json!({ "removed": removed }));
+                self.emit("local-changed", serde_json::json!({ "removed": removed }));
                 ResolveError::LocalMissing(path.to_owned())
             });
         }
@@ -817,7 +828,7 @@ impl AppState {
         self.db.put_radio_station(&item.video_id, &json);
 
         let uuid = station.station_uuid.clone();
-        tauri::async_runtime::spawn(async move {
+        tokio::spawn(async move {
             crate::radio::count_click(&uuid).await;
         });
 
@@ -1287,8 +1298,8 @@ impl AppState {
         // reaches us. It is one-shot: play/next afterwards behaves normally.
         if self.stop_after_current.swap(false, Ordering::SeqCst) {
             tracing::info!("stop-after-current reached");
-            let _ = self.app.emit("stop-after-current", false);
-            let _ = self.app.emit("playback-state", "paused");
+            self.emit("stop-after-current", false);
+            self.emit("playback-state", "paused");
             self.media_set_playing(false);
             self.persist_queue().await;
             return;
@@ -1311,7 +1322,7 @@ impl AppState {
             // pausing here and un-pausing a second later would flicker every consumer (UI,
             // MPRIS, Discord).
             let me = self.clone();
-            tauri::async_runtime::spawn(async move {
+            tokio::spawn(async move {
                 let gen = me.generation.fetch_add(1, Ordering::SeqCst) + 1;
                 if me.extend_queue_radio(gen).await > 0 {
                     {
@@ -1324,7 +1335,7 @@ impl AppState {
                     }
                 } else {
                     tracing::info!("queue exhausted");
-                    let _ = me.app.emit("playback-state", "paused");
+                    me.emit("playback-state", "paused");
                     // mpv goes idle without flipping its pause flag, so no Paused event will fire
                     // — tell the OS widget + Discord ourselves or they show "playing" forever
                     // past the last song.
@@ -1388,7 +1399,7 @@ impl AppState {
         // (its progress bar) and, worse, the *next* track-end. The generation guard inside already
         // makes a superseded resolve discard itself, so it's safe to detach.
         let me = self.clone();
-        tauri::async_runtime::spawn(async move {
+        tokio::spawn(async move {
             me.prime_lookahead(gen).await;
             me.extend_queue_radio(gen).await; // autoplay early trigger (no-op unless tail is near)
         });
@@ -1577,7 +1588,7 @@ impl AppState {
         // lookahead can prime into the continuation. The near-tail guard inside makes this a
         // no-op for almost every track start. Detached — never on the caller's path.
         let me = self.clone();
-        tauri::async_runtime::spawn(async move { me.extend_queue_radio(gen).await });
+        tokio::spawn(async move { me.extend_queue_radio(gen).await });
         true
     }
 
@@ -1741,7 +1752,7 @@ impl AppState {
         }
         let me = self.clone();
         let video_id = video_id.to_owned();
-        tauri::async_runtime::spawn(async move {
+        tokio::spawn(async move {
             let Some(client) = me.clients.get(innertube::METADATA_CLIENT) else { return };
             let epoch = me.rate_epoch.load(Ordering::SeqCst);
             let rating = match me.it.next(client, Some(&video_id), None).await {
@@ -1769,14 +1780,13 @@ impl AppState {
             if !changed {
                 return;
             }
-            let _ =
-                me.app.emit("rating", serde_json::json!({ "videoId": video_id, "rating": rating }));
+            me.emit("rating", serde_json::json!({ "videoId": video_id, "rating": rating }));
         });
     }
 
     fn emit_now_playing(&self, item: &SongItem, stream_client: &str) {
-        let _ = self.app.emit("now-playing", Self::now_playing_json(item, stream_client));
-        let _ = self.app.emit("playback-state", "playing");
+        self.emit("now-playing", Self::now_playing_json(item, stream_client));
+        self.emit("playback-state", "playing");
         // Push the same metadata to the OS media widget (fail-soft policy) and Discord.
         if let Some(m) = &self.media {
             // MPRIS/SMTC want a URL; a local track's artwork is a path, so hand it a file:// one.
@@ -1812,8 +1822,6 @@ impl AppState {
         if let Some(m) = &self.media {
             m.set_playback(playing, self.current_position());
         }
-        #[cfg(target_os = "windows")]
-        crate::taskbar::set_playing(&self.app, playing);
         if let Some(d) = &self.discord {
             d.set_playing(playing);
         }
@@ -1953,19 +1961,17 @@ impl AppState {
                 "sourceName": &q.source_name,
             })
         };
-        let _ = self.app.emit(if unchanged { "queue-index" } else { "queue-changed" }, payload);
+        self.emit(if unchanged { "queue-index" } else { "queue-changed" }, payload);
     }
 
     fn emit_error(&self, video_id: &str, message: &str) {
         tracing::error!(video_id, message, "playback error");
-        let _ = self
-            .app
-            .emit("playback-error", serde_json::json!({ "videoId": video_id, "message": message }));
+        self.emit("playback-error", serde_json::json!({ "videoId": video_id, "message": message }));
     }
 
     /// Guest tried a host-only playback action — explain instead of silently ignoring.
     fn emit_guest_hint(&self) {
-        let _ = self.app.emit(
+        self.emit(
             "playback-notice",
             serde_json::json!({ "message": "The host controls playback — click a song to add it to the session queue" }),
         );
@@ -1974,14 +1980,14 @@ impl AppState {
     /// A transient toast. Same channel as [`Self::emit_skip`], for messages that phrase themselves.
     fn emit_notice(&self, message: &str) {
         tracing::info!(message, "playback notice");
-        let _ = self.app.emit("playback-notice", serde_json::json!({ "message": message }));
+        self.emit("playback-notice", serde_json::json!({ "message": message }));
     }
 
     /// A track was auto-skipped because no client could resolve it — a transient toast, not the
     /// persistent error banner: the queue keeps playing, so this shouldn't read as a failure.
     fn emit_skip(&self, title: &str) {
         tracing::warn!(title, "skipping unplayable track");
-        let _ = self.app.emit(
+        self.emit(
             "playback-notice",
             serde_json::json!({ "message": format!("Skipped (unavailable): {title}") }),
         );
@@ -2003,7 +2009,7 @@ impl AppState {
     /// time-pos much faster than the UI needs; the event pump calls this for every raw sample and
     /// runs [`Self::on_position`] only at its throttled cadence. Pause/seek flushes therefore still
     /// use the exact latest sample without making every mpv tick hit SQLite/Discord/queue locks.
-    pub(crate) fn note_position_sample(&self, pos: f64) {
+    pub fn note_position_sample(&self, pos: f64) {
         if pos.is_finite() {
             self.latest_position.store(pos.to_bits(), Ordering::Relaxed);
         }
@@ -2063,7 +2069,7 @@ impl AppState {
             return;
         };
         let it = self.it.clone();
-        tauri::async_runtime::spawn(async move {
+        tokio::spawn(async move {
             match it.register_playback(&client, &ping.url, &cpn, None).await {
                 Ok(()) => tracing::debug!(client = %ping.client, "watch-history ping sent"),
                 Err(e) => tracing::warn!(error = %e, "watch-history ping failed"),
@@ -2292,7 +2298,7 @@ impl AppState {
             self.media_set_playing(false);
             self.emit_now_playing(&item, "restored");
             self.refresh_rating(&item.video_id, self.generation.load(Ordering::SeqCst));
-            let _ = self.app.emit("playback-state", "paused");
+            self.emit("playback-state", "paused");
         }
         self.emit_queue().await;
     }
@@ -2339,7 +2345,7 @@ impl AppState {
         // The stored PoToken is a cache too, and "clear caches" is where someone goes when
         // playback has started behaving oddly. Dropping it costs one BotGuard bootstrap.
         self.db.delete_setting("potoken_session");
-        if let Ok(entries) = std::fs::read_dir(&self.cache_dir) {
+        if let Ok(entries) = std::fs::read_dir(&self.paths.cache_dir) {
             for e in entries.flatten() {
                 let _ = std::fs::remove_file(e.path());
             }
@@ -2460,7 +2466,7 @@ impl AppState {
             self.emit_now_playing(&item, "listen-together");
         }
         if !playing {
-            let _ = self.app.emit("playback-state", "paused");
+            self.emit("playback-state", "paused");
         }
         self.emit_queue().await;
         // The elapsed-compensation above still can't see mpv's own decode/buffer startup. Fire one
@@ -2468,7 +2474,7 @@ impl AppState {
         // flowing. Re-sync is seek-only for the loaded track, so there's no reload blip.
         if playing {
             let lt = self.lt.clone();
-            tauri::async_runtime::spawn(async move {
+            tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
                 lt.request_sync().await;
             });
@@ -2645,7 +2651,7 @@ impl AppState {
             let gen = self.generation.load(Ordering::SeqCst);
             self.prime_lookahead(gen).await;
         }
-        let _ = self.app.emit("stop-after-current", enabled);
+        self.emit("stop-after-current", enabled);
     }
 
     pub async fn set_repeat(self: &std::sync::Arc<Self>, mode: RepeatMode) {
@@ -2656,7 +2662,7 @@ impl AppState {
         // Repeat-one and a one-shot EOF stop cannot both complete. A deliberate repeat-one click
         // wins and disarms the stop; repeat-all/off preserve it but do not re-prime while armed.
         if mode == RepeatMode::One && self.stop_after_current.swap(false, Ordering::SeqCst) {
-            let _ = self.app.emit("stop-after-current", false);
+            self.emit("stop-after-current", false);
         }
         {
             let mut q = self.queue.lock().await;
@@ -3000,7 +3006,7 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-pub(crate) fn song_to_track(s: &SongItem) -> Track {
+pub fn song_to_track(s: &SongItem) -> Track {
     Track {
         id: s.video_id.clone(),
         title: s.title.clone(),

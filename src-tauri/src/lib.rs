@@ -1,18 +1,12 @@
 //! Ryotunes Tauri app. Wires transport + player + db + orchestrator behind the command boundary.
 
 mod commands;
-mod discord;
 mod host_sink;
-mod lastfm;
-mod local;
-mod lyrics;
+mod local_scope;
+mod login_webview;
 mod main_window;
 mod mini;
-mod orchestrator;
-mod radio;
 mod ryoku_theme;
-mod session;
-mod state;
 #[cfg(target_os = "windows")]
 mod taskbar;
 mod tray;
@@ -24,7 +18,10 @@ use std::time::Duration;
 use innertube::{Clients, InnerTube, Locale, Session};
 use player::{Player, PlayerEvent};
 use tauri::{Emitter, Manager};
-use ryotunes_core::{cipher, db, http, listentogether, media, potoken};
+use ryotunes_core::{
+    cipher, db, discord, lastfm, listentogether, local, lyrics, media, orchestrator,
+    potoken, radio, state,
+};
 
 use cipher::{CipherDeobfuscator, PlayerConfigStore};
 use db::Db;
@@ -307,15 +304,26 @@ pub fn run() {
                 db.get_setting("lt_server_url").filter(|u| !u.is_empty()).unwrap_or_default();
             let (lt, lt_sync_rx) = listentogether::LtSession::new(sink.clone(), lt_url);
 
+            // Where the core keeps its files (covers, db, mpv audio cache). The host owns the
+            // XDG resolution; the core only ever joins onto these.
+            let paths = ryotunes_core::host::Paths {
+                data_dir: data_dir.clone(),
+                cache_dir: cache_dir.clone(),
+            };
+            // Interactive Google sign-in lives in the host — it needs a visible browser window.
+            let login: Arc<dyn ryotunes_core::host::LoginFlow> =
+                Arc::new(login_webview::TauriLogin { app: handle.clone() });
+
             let app_state = Arc::new(AppState::new(
                 it,
                 clients,
                 player,
                 db,
-                handle.clone(),
+                sink.clone(),
+                login,
+                paths,
                 orchestrator,
                 lt,
-                cache_dir.clone(),
                 media,
                 discord,
                 lastfm,
@@ -326,9 +334,10 @@ pub fn run() {
             // apply them to the now-managed AppState on the Tauri runtime.
             {
                 let st = app_state.clone();
+                let media_app = handle.clone();
                 tauri::async_runtime::spawn(async move {
                     while let Some(ev) = media_rx.recv().await {
-                        handle_media_event(st.clone(), ev).await;
+                        handle_media_event(st.clone(), media_app.clone(), ev).await;
                     }
                 });
             }
@@ -340,7 +349,7 @@ pub fn run() {
 
             // Local music artwork reaches the webview over the asset protocol, whose configured
             // scope is empty — the folders it may read are the ones the user picked (local.rs).
-            local::allow_music_paths(&handle, &app_state.db);
+            local_scope::allow_music_paths(&handle, &app_state.db, &app_state.paths);
 
             // System tray: playback controls + show/quit while running in the background.
             if let Err(e) = tray::init(&handle) {
@@ -624,7 +633,11 @@ pub fn run() {
 
 /// Route an OS media-control press into the same [`AppState`] methods the UI commands use. The
 /// media-controls thread (and, on Windows, the taskbar toolbar) feed presses here over `media_rx`.
-async fn handle_media_event(state: Arc<AppState>, event: souvlaki::MediaControlEvent) {
+async fn handle_media_event(
+    state: Arc<AppState>,
+    app: tauri::AppHandle,
+    event: souvlaki::MediaControlEvent,
+) {
     use souvlaki::{MediaControlEvent, MediaPosition, SeekDirection};
     match event {
         MediaControlEvent::Play => state.resume().await,
@@ -635,7 +648,7 @@ async fn handle_media_event(state: Arc<AppState>, event: souvlaki::MediaControlE
         MediaControlEvent::Stop => {
             let _ = state.player.stop();
             state.media_set_playing(false);
-            main_window::schedule_idle_exit(&state.app);
+            main_window::schedule_idle_exit(&app);
         }
         MediaControlEvent::Next => state.next_in_queue().await,
         MediaControlEvent::Previous => state.prev_in_queue().await,
@@ -668,7 +681,7 @@ pub(crate) fn handle_media_event_from_app(
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let Some(state) = app.try_state::<Arc<AppState>>() else { return };
-        handle_media_event(state.inner().clone(), event).await;
+        handle_media_event(state.inner().clone(), app.clone(), event).await;
     });
 }
 

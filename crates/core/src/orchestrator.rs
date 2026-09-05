@@ -309,7 +309,7 @@ impl Orchestrator {
                 let cipher = self.cipher.clone();
                 let potoken = self.potoken.clone();
                 let failed = self.web_remix_failed.clone();
-                tauri::async_runtime::spawn(async move {
+                tokio::spawn(async move {
                     // The session PoToken now outlives the process, so a rejected web stream is
                     // the only signal left that Google stopped honouring it early. Drop it here
                     // rather than replay it for the rest of its nominal 12 hours.

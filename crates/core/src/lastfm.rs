@@ -23,9 +23,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use innertube::SongItem;
 use md5::{Digest, Md5};
-use tauri::Emitter;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
+use crate::host::EventSink;
 use crate::state::AppState;
 
 /// Last.fm API credentials. Baked in at compile time from the gitignored `src-tauri/lastfm.keys`
@@ -110,7 +110,7 @@ impl LastfmHandle {
 /// the user connects.
 pub fn spawn(session_key: Option<String>) -> LastfmHandle {
     let (tx, mut rx) = unbounded_channel::<Msg>();
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let mut s = Scrobbler::new(session_key);
         while let Some(msg) = rx.recv().await {
             s.apply(msg).await;
@@ -277,12 +277,12 @@ fn sign(params: &[(String, String)]) -> String {
 // --- auth flow (connect / disconnect / status) ----------------------------------------------
 
 fn emit_state(
-    app: &tauri::AppHandle,
+    sink: &dyn EventSink,
     connected: bool,
     username: Option<&str>,
     error: Option<&str>,
 ) {
-    let _ = app.emit(
+    sink.emit(
         "lastfm-state",
         serde_json::json!({
             "configured": !API_KEY.is_empty() && !API_SECRET.is_empty(),
@@ -311,7 +311,7 @@ pub async fn connect(state: Arc<AppState>) -> Result<(), String> {
 
     open_browser(&format!("{AUTH_URL}?api_key={API_KEY}&token={token}"))?;
 
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         for _ in 0..AUTH_POLL_TRIES {
             tokio::time::sleep(AUTH_POLL_EVERY).await;
             if state.lastfm.gen() != gen {
@@ -324,7 +324,7 @@ pub async fn connect(state: Arc<AppState>) -> Result<(), String> {
                     let key = body.pointer("/session/key").and_then(|v| v.as_str());
                     let (Some(name), Some(key)) = (name, key) else {
                         emit_state(
-                            &state.app,
+                            state.sink.as_ref(),
                             false,
                             None,
                             Some("Last.fm sent a malformed session"),
@@ -335,17 +335,17 @@ pub async fn connect(state: Arc<AppState>) -> Result<(), String> {
                     state.db.set_setting("lastfm_username", name);
                     state.lastfm.set_session(Some(key.to_string()));
                     tracing::info!("last.fm connected");
-                    emit_state(&state.app, true, Some(name), None);
+                    emit_state(state.sink.as_ref(), true, Some(name), None);
                     return;
                 }
                 Err(e) if e.retryable() => continue, // not approved yet (or transient) — keep polling
                 Err(e) => {
-                    emit_state(&state.app, false, None, Some(&format!("Last.fm: {}", e.message)));
+                    emit_state(state.sink.as_ref(), false, None, Some(&format!("Last.fm: {}", e.message)));
                     return;
                 }
             }
         }
-        emit_state(&state.app, false, None, Some("Last.fm authorization timed out — try again"));
+        emit_state(state.sink.as_ref(), false, None, Some("Last.fm authorization timed out — try again"));
     });
     Ok(())
 }
@@ -355,7 +355,7 @@ pub fn disconnect(state: &AppState) {
     state.db.set_setting("lastfm_session_key", "");
     state.db.set_setting("lastfm_username", "");
     state.lastfm.set_session(None);
-    emit_state(&state.app, false, None, None);
+    emit_state(state.sink.as_ref(), false, None, None);
 }
 
 pub fn status(state: &AppState) -> serde_json::Value {
@@ -372,7 +372,7 @@ fn browser_url(raw: &str) -> Result<String, String> {
     if raw.len() > 4_096 {
         return Err("Link is too long to open safely.".into());
     }
-    let url = tauri::Url::parse(raw).map_err(|_| "That is not a valid web link.")?;
+    let url = url::Url::parse(raw).map_err(|_| "That is not a valid web link.")?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
         return Err("Only http:// and https:// links can be opened.".into());
     }
@@ -385,7 +385,7 @@ fn browser_url(raw: &str) -> Result<String, String> {
 /// Open a validated URL in the user's default browser. Arguments go directly to an executable —
 /// never through a shell. In particular, Windows used to call `cmd.exe /C start`; a quote inside
 /// an IPC-supplied URL could then be re-parsed as command syntax.
-pub(crate) fn open_browser(raw: &str) -> Result<(), String> {
+pub fn open_browser(raw: &str) -> Result<(), String> {
     let url = browser_url(raw)?;
     #[cfg(target_os = "linux")]
     let cmd = std::process::Command::new("xdg-open").arg(&url).spawn();

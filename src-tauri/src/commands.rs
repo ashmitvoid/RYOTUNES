@@ -7,7 +7,7 @@ use innertube::{
     AlbumPage, ArtistPage, BrowseItem, HomePage, PlaylistContinuation, PlaylistPage, PlaylistSort,
     Rating, SearchCardPage, SearchResult, SearchResults, SongItem,
 };
-use tauri::{Emitter, State};
+use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::state::{
@@ -329,7 +329,7 @@ pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
     state.player.set_volume(volume).map_err(|e| e.to_string())?;
     // There is one volume and there can be two windows (the mini player). Without this the one
     // that didn't move the slider keeps showing the old level and lies about what you're hearing.
-    let _ = state.app.emit("volume", volume);
+    state.emit("volume", volume);
     Ok(())
 }
 
@@ -520,9 +520,7 @@ pub async fn sign_out(state: St<'_>) -> Result<(), String> {
 /// hears back via `auth-changed` (success) or `login-error`.
 #[tauri::command]
 pub async fn login_webview(state: St<'_>) -> Result<(), String> {
-    let state = state.inner().clone();
-    let app = state.app.clone();
-    crate::session::open_login(app, state);
+    state.inner().sign_in().await;
     Ok(())
 }
 
@@ -1500,7 +1498,7 @@ pub async fn set_playlist_cover(
             Err(e) => {
                 tracing::warn!(playlist_id, error = %e, "custom cover not cleared on YouTube Music");
                 if state.db.get_setting(&synced_key(&playlist_id)).is_some() {
-                    let _ = state.app.emit(
+                    state.emit(
                         "cover-error",
                         serde_json::json!({
                             "message": "Removed here, but YouTube Music kept its copy.",
@@ -1547,7 +1545,7 @@ pub async fn set_playlist_cover(
         return Err("That file is not a valid JPEG or PNG image.".into());
     }
 
-    let dir = crate::local::covers_dir(&app).join("playlists");
+    let dir = crate::local::covers_dir(&state.paths).join("playlists");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let stem: String = playlist_id
         .chars()
@@ -1610,7 +1608,7 @@ fn sync_cover(state: &Arc<AppState>, playlist_id: &str, path: String) {
                     innertube::Error::CoverRefused => format!("Artwork saved on this device. {e}"),
                     e => format!("Artwork saved here, but the upload to YouTube Music failed: {e}"),
                 };
-                let _ = state.app.emit("cover-error", serde_json::json!({ "message": message }));
+                state.emit("cover-error", serde_json::json!({ "message": message }));
             }
         }
     });
@@ -1679,8 +1677,11 @@ pub async fn subscribe(state: St<'_>, channel_id: String, subscribed: bool) -> R
 /// `removed` list is every id that was on screen but is gone from disk, so the UI can drop those
 /// tiles without waiting for anyone to click a dead one.
 #[tauri::command]
-pub async fn get_local_library(state: St<'_>) -> Result<crate::local::LocalLibrary, String> {
-    scan_local(&state).await
+pub async fn get_local_library(
+    app: tauri::AppHandle,
+    state: St<'_>,
+) -> Result<crate::local::LocalLibrary, String> {
+    scan_local(&app, &state).await
 }
 
 #[tauri::command]
@@ -1697,28 +1698,31 @@ pub async fn add_local_folder(
         .map_err(|_| "That folder is not a local filesystem path.".to_string())?;
     let path = canonical_music_folder(chosen.to_string_lossy().as_ref())?;
     crate::local::add_folder(&state.db, path);
-    scan_local(&state).await.map(Some)
+    scan_local(&app, &state).await.map(Some)
 }
 
 #[tauri::command]
 pub async fn remove_local_folder(
+    app: tauri::AppHandle,
     state: St<'_>,
     path: String,
 ) -> Result<crate::local::LocalLibrary, String> {
     crate::local::remove_folder(&state.db, &path);
-    scan_local(&state).await
+    scan_local(&app, &state).await
 }
 
 /// Disk IO + tag parsing off the async runtime's worker threads.
-async fn scan_local(state: &Arc<AppState>) -> Result<crate::local::LocalLibrary, String> {
-    let app = state.app.clone();
+async fn scan_local(
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+) -> Result<crate::local::LocalLibrary, String> {
+    let covers = crate::local::covers_dir(&state.paths);
     let state = state.clone();
-    let covers = crate::local::covers_dir(&state.app);
     let lib = tauri::async_runtime::spawn_blocking(move || crate::local::scan(&state.db, &covers))
         .await
         .map_err(|e| e.to_string())?;
     // Artwork reaches the page over the asset protocol, which starts out allowing nothing.
-    crate::local::allow_covers(&app, &lib.songs);
+    crate::local_scope::allow_covers(app, &lib.songs);
     Ok(lib)
 }
 
