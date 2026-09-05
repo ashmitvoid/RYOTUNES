@@ -3965,7 +3965,10 @@ version = "2.4.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "glib",
+ "gtk",
  "innertube",
+ "javascriptcore-rs",
  "libc",
  "player",
  "ryotunes-core",
@@ -3976,6 +3979,9 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "webkit2gtk",
 ]
 
 [[package]]

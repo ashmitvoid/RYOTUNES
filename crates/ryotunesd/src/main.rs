@@ -1,3 +1,6 @@
+mod gtk_thread;
+mod js;
+mod login;
 mod server;
 mod sink;
 
